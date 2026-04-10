@@ -32,6 +32,14 @@ from api.config import (
     integrations_table_name,
     assignment_table_name,
     bq_sync_table_name,
+    network_posts_table_name,
+    network_tags_table_name,
+    network_post_tags_table_name,
+    network_comments_table_name,
+    network_votes_table_name,
+    network_poll_options_table_name,
+    network_poll_votes_table_name,
+    user_network_profiles_table_name,
 )
 from api.db.migration import run_migrations
 
@@ -647,6 +655,187 @@ async def create_code_drafts_table(cursor):
     )
 
 
+async def create_network_tables(cursor):
+    # Network posts
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_posts_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                post_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                blocks TEXT,
+                content_text TEXT,
+                code_content TEXT,
+                coding_language TEXT,
+                status TEXT DEFAULT 'published',
+                is_pinned BOOLEAN DEFAULT 0,
+                view_count INTEGER DEFAULT 0,
+                reply_count INTEGER DEFAULT 0,
+                upvote_count INTEGER DEFAULT 0,
+                downvote_count INTEGER DEFAULT 0,
+                quality_score REAL DEFAULT 0.0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (author_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_posts_org ON {network_posts_table_name} (org_id)"""
+    )
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_posts_author ON {network_posts_table_name} (author_id)"""
+    )
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_posts_type ON {network_posts_table_name} (post_type)"""
+    )
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_posts_created ON {network_posts_table_name} (created_at)"""
+    )
+
+    # Update trigger for network_posts
+    trigger_name = f"set_updated_at_{network_posts_table_name}"
+    await cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+    await cursor.execute(
+        f"""
+        CREATE TRIGGER {trigger_name}
+        AFTER UPDATE ON {network_posts_table_name}
+        FOR EACH ROW
+        BEGIN
+            UPDATE {network_posts_table_name}
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = NEW.id;
+        END;
+        """
+    )
+
+    # Network tags
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_tags_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                description TEXT,
+                usage_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                UNIQUE(org_id, slug)
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_tags_org ON {network_tags_table_name} (org_id)"""
+    )
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_tags_slug ON {network_tags_table_name} (slug)"""
+    )
+
+    # Post-tag junction
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_post_tags_table_name} (
+                post_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (post_id, tag_id),
+                FOREIGN KEY (post_id) REFERENCES {network_posts_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES {network_tags_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    # Comments
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_comments_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                parent_comment_id INTEGER,
+                content TEXT NOT NULL,
+                code_content TEXT,
+                coding_language TEXT,
+                upvote_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (post_id) REFERENCES {network_posts_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (author_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_comment_id) REFERENCES {network_comments_table_name}(id)
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_comments_post ON {network_comments_table_name} (post_id)"""
+    )
+
+    # Votes
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_votes_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                vote_type TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, target_type, target_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    await cursor.execute(
+        f"""CREATE INDEX IF NOT EXISTS idx_network_votes_target ON {network_votes_table_name} (target_type, target_id)"""
+    )
+
+    # Poll options
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_poll_options_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                option_text TEXT NOT NULL,
+                vote_count INTEGER DEFAULT 0,
+                FOREIGN KEY (post_id) REFERENCES {network_posts_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    # Poll votes
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {network_poll_votes_table_name} (
+                user_id INTEGER NOT NULL,
+                option_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, option_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (option_id) REFERENCES {network_poll_options_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+    # User network profiles (badge/reputation)
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {user_network_profiles_table_name} (
+                user_id INTEGER NOT NULL,
+                org_id INTEGER NOT NULL,
+                badge_tier TEXT DEFAULT 'Bronze 1',
+                badge_score INTEGER DEFAULT 0,
+                learning_score INTEGER DEFAULT 0,
+                contribution_score INTEGER DEFAULT 0,
+                endorsement_score INTEGER DEFAULT 0,
+                downvote_penalty INTEGER DEFAULT 0,
+                posts_count INTEGER DEFAULT 0,
+                comments_count INTEGER DEFAULT 0,
+                upvotes_received INTEGER DEFAULT 0,
+                downvotes_received INTEGER DEFAULT 0,
+                network_role TEXT DEFAULT 'newbie',
+                last_active_at DATETIME,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, org_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+
+
 async def init_db():
     # Ensure the database folder exists
     db_folder = os.path.dirname(sqlite_db_path)
@@ -709,6 +898,8 @@ async def init_db():
             await create_assignment_table(cursor)
 
             await create_bq_sync_table(cursor)
+
+            await create_network_tables(cursor)
 
             await conn.commit()
 

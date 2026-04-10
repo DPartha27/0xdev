@@ -231,5 +231,19 @@ async def cleanup_invalid_chat_history():
         await conn.commit()
 
 
+async def create_network_tables_migration():
+    """
+    Migration: Creates the network hub tables if they don't exist.
+    """
+    async with get_new_db_connection() as conn:
+        cursor = await conn.cursor()
+        from api.db import create_network_tables
+
+        await create_network_tables(cursor)
+
+        await conn.commit()
+
+
 async def run_migrations():
     await cleanup_invalid_chat_history()
+    await create_network_tables_migration()

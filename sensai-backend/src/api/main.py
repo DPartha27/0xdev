@@ -26,6 +26,7 @@ from api.routes import (
     ai,
     scorecard,
     integration,
+    network,
 )
 
 # from api.routes.ai import (
@@ -134,6 +135,7 @@ app.include_router(code.router, prefix="/code", tags=["code"])
 app.include_router(hva.router, prefix="/hva", tags=["hva"])
 app.include_router(websocket_router, prefix="/ws", tags=["websockets"])
 app.include_router(integration.router, prefix="/integrations", tags=["integrations"])
+app.include_router(network.router, prefix="/network", tags=["network"])
 
 
 @app.exception_handler(Exception)

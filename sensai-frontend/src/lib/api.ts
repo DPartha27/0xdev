@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { useCallback, useEffect, useState } from 'react';
 import { Task, Milestone } from "@/types";
 import { Module } from "@/types/course";
+import { NetworkPost, NetworkTag, NetworkComment } from "@/types/network";
 import { transformMilestonesToModules } from "./course";
 
 // Define course interface based on your backend response
@@ -318,3 +319,93 @@ export const addModule = async (courseId: string, schoolId: string, modules: Mod
       setActiveModuleId(newModule.id);
   }
 };
+
+
+// ─── Network Hub Hooks ───
+
+
+export function useNetworkFeed(orgId: number | null, filter: string = 'recent', tag?: string, search?: string) {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [posts, setPosts] = useState<NetworkPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || authLoading || !orgId) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    const params = new URLSearchParams({
+      org_id: String(orgId),
+      user_id: String(user.id),
+      filter,
+    });
+    if (tag) params.set('tag', tag);
+    if (search) params.set('q', search);
+
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts?${params}`)
+      .then(response => {
+        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+        return response.json();
+      })
+      .then(data => setPosts(data))
+      .catch(err => setError(err))
+      .finally(() => setIsLoading(false));
+  }, [user?.id, isAuthenticated, authLoading, orgId, filter, tag, search]);
+
+  return { posts, isLoading, error, setPosts };
+}
+
+export function useTrendingTags(orgId: number | null) {
+  const [tags, setTags] = useState<NetworkTag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!orgId) return;
+
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/tags/trending?org_id=${orgId}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setTags(data))
+      .catch(() => setTags([]))
+      .finally(() => setIsLoading(false));
+  }, [orgId]);
+
+  return { tags, isLoading };
+}
+
+export function useRecommendedTags(orgId: number | null) {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [tags, setTags] = useState<NetworkTag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || authLoading || !orgId) return;
+
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/tags/recommended?user_id=${user.id}&org_id=${orgId}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setTags(data))
+      .catch(() => setTags([]))
+      .finally(() => setIsLoading(false));
+  }, [user?.id, isAuthenticated, authLoading, orgId]);
+
+  return { tags, isLoading };
+}
+
+export function useAllTags(orgId: number | null) {
+  const [tags, setTags] = useState<NetworkTag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!orgId) return;
+
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/tags?org_id=${orgId}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setTags(data))
+      .catch(() => setTags([]))
+      .finally(() => setIsLoading(false));
+  }, [orgId]);
+
+  return { tags, isLoading };
+}

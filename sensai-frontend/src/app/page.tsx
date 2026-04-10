@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { useCourses, useSchools, Course as ApiCourse } from "@/lib/api";
 import CourseCard from "@/components/CourseCard";
 import CreateCourseDialog from "@/components/CreateCourseDialog";
+import { Globe } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
@@ -269,6 +270,18 @@ export default function Home() {
         onSuccess={handleCourseCreationSuccess}
         schoolId={schoolId || undefined}
       />
+
+      {/* Floating Network Button */}
+      {session && (
+        <button
+          onClick={() => router.push('/network')}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3 rounded-full shadow-lg bg-black dark:bg-white text-white dark:text-black hover:scale-105 transition-transform cursor-pointer"
+          aria-label="Open Network Hub"
+        >
+          <Globe className="w-5 h-5" />
+          <span className="text-sm font-medium hidden sm:inline">Network</span>
+        </button>
+      )}
     </>
   );
 }

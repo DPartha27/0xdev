@@ -799,3 +799,82 @@ class UpdateIntegrationRequest(BaseModel):
     access_token: str | None = None
     refresh_token: str | None = None
     expires_at: datetime | None = None
+
+
+# ─── Network Hub Models ───
+
+
+class NetworkPostType(Enum):
+    THREAD = "thread"
+    QUESTION = "question"
+    POLL = "poll"
+    CODE_SNIPPET = "code_snippet"
+    TIP = "tip"
+    EXPLANATION = "explanation"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        elif isinstance(other, NetworkPostType):
+            return self.value == other.value
+        return False
+
+
+class NetworkRole(Enum):
+    MENTOR = "mentor"
+    NEWBIE = "newbie"
+    MASTER = "master"
+
+    def __str__(self):
+        return self.value
+
+
+class CreateNetworkPostRequest(BaseModel):
+    org_id: int
+    author_id: int
+    post_type: str
+    title: str
+    blocks: list | None = None
+    content_text: str | None = None
+    code_content: str | None = None
+    coding_language: str | None = None
+    tags: list[str] = []
+    poll_options: list[str] | None = None
+
+
+class CreateCommentRequest(BaseModel):
+    author_id: int
+    content: str
+    code_content: str | None = None
+    coding_language: str | None = None
+    parent_comment_id: int | None = None
+
+
+class VoteRequest(BaseModel):
+    user_id: int
+    vote_type: str  # 'upvote' or 'downvote'
+
+
+class PollVoteRequest(BaseModel):
+    user_id: int
+    option_id: int
+
+
+class UpdateNetworkPostRequest(BaseModel):
+    title: str | None = None
+    content_text: str | None = None
+    code_content: str | None = None
+    coding_language: str | None = None
+    tags: list[str] | None = None
+
+
+class AICheckRequest(BaseModel):
+    post_type: str
+    title: str
+    content_text: str | None = None
+    code_content: str | None = None
+    coding_language: str | None = None
+    org_id: int | None = None
