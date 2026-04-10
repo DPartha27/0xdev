@@ -18,7 +18,33 @@ from api.models import (
     S3FetchPresignedUrlResponse,
 )
 
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 router = APIRouter()
+
+
+@router.post("/validate-image")
+async def validate_image(file: UploadFile = File(...)):
+    """
+    Validate an uploaded image using a local CLIP model.
+    Returns whether the image is educational (diagrams, code, charts, etc.)
+    and rejects selfies, memes, NSFW, and other non-educational content.
+    """
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid image type: {file.content_type}. Allowed: png, jpeg, gif, webp.")
+
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Image too large. Maximum size is 10 MB.")
+
+    from api.utils.image_filter import classify_image
+    result = classify_image(contents)
+
+    if not result["allowed"]:
+        raise HTTPException(status_code=422, detail=result["reason"])
+
+    return result
 
 
 @router.put("/presigned-url/create", response_model=PresignedUrlResponse)
@@ -124,6 +150,14 @@ async def upload_file_locally(
 
         # Save the file
         contents = await file.read()
+
+        # Validate images through CLIP filter
+        if content_type in ALLOWED_IMAGE_TYPES:
+            from api.utils.image_filter import classify_image
+            result = classify_image(contents)
+            if not result["allowed"]:
+                raise HTTPException(status_code=422, detail=result["reason"])
+
         with open(file_path, "wb") as f:
             f.write(contents)
 

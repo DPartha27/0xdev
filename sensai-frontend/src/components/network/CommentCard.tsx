@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { NetworkComment } from "@/types/network";
 import BadgeIndicator from "./BadgeIndicator";
-import { ChevronUp, Reply, Code } from "lucide-react";
+import { ChevronUp, Reply, Code, Bot, Trash2, AlertTriangle } from "lucide-react";
 
 interface CommentCardProps {
     comment: NetworkComment;
+    currentUserId?: number;
     onVote: (commentId: number, voteType: string) => void;
-    onReply: (commentId: number, content: string, codeContent?: string, codingLanguage?: string) => void;
+    onReply: (commentId: number, content: string, codeContent?: string, codingLanguage?: string) => Promise<boolean>;
+    onDelete?: (commentId: number) => void;
     depth?: number;
 }
 
@@ -24,24 +26,39 @@ function timeAgo(dateString: string): string {
     return `${Math.floor(seconds / 86400)}d`;
 }
 
-export default function CommentCard({ comment, onVote, onReply, depth = 0 }: CommentCardProps) {
+export default function CommentCard({ comment, currentUserId, onVote, onReply, onDelete, depth = 0 }: CommentCardProps) {
     const [showReply, setShowReply] = useState(false);
     const [replyText, setReplyText] = useState("");
     const [isCodeReply, setIsCodeReply] = useState(false);
     const [codeLanguage, setCodeLanguage] = useState("javascript");
-    const authorName = `${comment.author.first_name} ${comment.author.last_name}`.trim() || comment.author.email;
-    const initials = comment.author.first_name ? comment.author.first_name.charAt(0).toUpperCase() : 'U';
+    const [replyError, setReplyError] = useState<string | null>(null);
+    const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+    const isOwner = currentUserId === comment.author.id;
+    const isBot = comment.author.email === "sensai-bot@sensai.internal";
+    const authorName = isBot ? "SensAI Bot" : (`${comment.author.first_name} ${comment.author.last_name}`.trim() || comment.author.email);
+    const initials = isBot ? "" : (comment.author.first_name ? comment.author.first_name.charAt(0).toUpperCase() : 'U');
 
-    const handleSubmitReply = () => {
+    const handleSubmitReply = async () => {
         if (!replyText.trim()) return;
-        if (isCodeReply) {
-            onReply(comment.id, "Code reply", replyText, codeLanguage);
-        } else {
-            onReply(comment.id, replyText);
+        setReplyError(null);
+        setIsSubmittingReply(true);
+        try {
+            let success: boolean;
+            if (isCodeReply) {
+                success = await onReply(comment.id, "Code reply", replyText, codeLanguage);
+            } else {
+                success = await onReply(comment.id, replyText);
+            }
+            if (success) {
+                setReplyText("");
+                setShowReply(false);
+                setIsCodeReply(false);
+            }
+        } catch (err: any) {
+            setReplyError(err.message || "Your reply doesn't seem relevant to this post.");
+        } finally {
+            setIsSubmittingReply(false);
         }
-        setReplyText("");
-        setShowReply(false);
-        setIsCodeReply(false);
     };
 
     return (
@@ -49,11 +66,24 @@ export default function CommentCard({ comment, onVote, onReply, depth = 0 }: Com
             <div className="py-3">
                 {/* Author line */}
                 <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-6 h-6 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-[10px] font-medium">{initials}</span>
-                    </div>
-                    <span className="text-sm font-medium text-black dark:text-white">{authorName}</span>
-                    <BadgeIndicator tier={comment.author.badge_tier} size="sm" />
+                    {isBot ? (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                            <Bot className="w-3.5 h-3.5 text-white" />
+                        </div>
+                    ) : (
+                        <div className="w-6 h-6 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[10px] font-medium">{initials}</span>
+                        </div>
+                    )}
+                    <span className={`text-sm font-medium ${isBot ? 'text-purple-600 dark:text-purple-400' : 'text-black dark:text-white'}`}>{authorName}</span>
+                    {isBot ? (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800">
+                            <Bot className="w-2.5 h-2.5" />
+                            AI
+                        </span>
+                    ) : (
+                        <BadgeIndicator tier={comment.author.badge_tier} size="sm" />
+                    )}
                     <span className="text-xs text-gray-400">{timeAgo(comment.created_at)}</span>
                 </div>
 
@@ -69,6 +99,13 @@ export default function CommentCard({ comment, onVote, onReply, depth = 0 }: Com
                     ) : (
                         <p className="text-sm text-gray-700 dark:text-gray-300">{comment.content}</p>
                     )}
+                    {comment.image_url && (
+                        <img
+                            src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${comment.image_url}`}
+                            alt="Comment image"
+                            className="mt-2 max-h-48 rounded-lg border border-gray-200 dark:border-[#35363a]"
+                        />
+                    )}
 
                     {/* Actions */}
                     <div className="flex items-center gap-3 mt-1.5">
@@ -82,10 +119,19 @@ export default function CommentCard({ comment, onVote, onReply, depth = 0 }: Com
                         {depth < 1 && (
                             <button
                                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer"
-                                onClick={() => setShowReply(!showReply)}
+                                onClick={() => { setShowReply(!showReply); setReplyError(null); }}
                             >
                                 <Reply className="w-3.5 h-3.5" />
                                 Reply
+                            </button>
+                        )}
+                        {isOwner && onDelete && (
+                            <button
+                                className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 cursor-pointer"
+                                onClick={() => onDelete(comment.id)}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
                             </button>
                         )}
                     </div>
@@ -140,15 +186,22 @@ export default function CommentCard({ comment, onVote, onReply, depth = 0 }: Com
                                     onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitReply(); }}
                                 />
                             )}
+                            {replyError && (
+                                <div className="flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 p-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                                    {replyError}
+                                </div>
+                            )}
                             <div className="flex gap-2">
                                 <button
                                     onClick={handleSubmitReply}
-                                    className="text-xs px-3 py-1 rounded-md bg-black dark:bg-white text-white dark:text-black cursor-pointer hover:opacity-90"
+                                    disabled={isSubmittingReply || !replyText.trim()}
+                                    className="text-xs px-3 py-1 rounded-md bg-black dark:bg-white text-white dark:text-black cursor-pointer hover:opacity-90 disabled:opacity-50"
                                 >
-                                    Reply
+                                    {isSubmittingReply ? '...' : 'Reply'}
                                 </button>
                                 <button
-                                    onClick={() => { setShowReply(false); setReplyText(""); setIsCodeReply(false); }}
+                                    onClick={() => { setShowReply(false); setReplyText(""); setIsCodeReply(false); setReplyError(null); }}
                                     className="text-xs px-3 py-1 text-gray-500 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300"
                                 >
                                     Cancel
@@ -164,8 +217,10 @@ export default function CommentCard({ comment, onVote, onReply, depth = 0 }: Com
                 <CommentCard
                     key={reply.id}
                     comment={reply}
+                    currentUserId={currentUserId}
                     onVote={onVote}
                     onReply={onReply}
+                    onDelete={onDelete}
                     depth={depth + 1}
                 />
             ))}

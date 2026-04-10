@@ -244,6 +244,26 @@ async def create_network_tables_migration():
         await conn.commit()
 
 
+async def add_image_url_columns():
+    """Add image_url column to network_posts and network_comments if missing."""
+    async with get_new_db_connection() as conn:
+        cursor = await conn.cursor()
+        for table in ["network_posts", "network_comments"]:
+            await cursor.execute(f"PRAGMA table_info({table})")
+            cols = [col[1] for col in await cursor.fetchall()]
+            if "image_url" not in cols:
+                await cursor.execute(f"ALTER TABLE {table} ADD COLUMN image_url TEXT")
+
+        # Add is_edited column to network_posts
+        await cursor.execute("PRAGMA table_info(network_posts)")
+        cols = [col[1] for col in await cursor.fetchall()]
+        if "is_edited" not in cols:
+            await cursor.execute("ALTER TABLE network_posts ADD COLUMN is_edited BOOLEAN DEFAULT 0")
+
+        await conn.commit()
+
+
 async def run_migrations():
     await cleanup_invalid_chat_history()
     await create_network_tables_migration()
+    await add_image_url_columns()

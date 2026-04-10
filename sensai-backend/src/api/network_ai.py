@@ -11,6 +11,8 @@ from api.prompts.network import (
     SUMMARIZE_USER_PROMPT,
     ANSWER_SUGGEST_SYSTEM_PROMPT,
     ANSWER_SUGGEST_USER_PROMPT,
+    APPLY_SUGGESTIONS_SYSTEM_PROMPT,
+    APPLY_SUGGESTIONS_USER_PROMPT,
 )
 from api.config import openai_plan_to_model_name
 
@@ -35,6 +37,12 @@ class SummarizeResponse(BaseModel):
     summary: str
 
 
+class ApplySuggestionsResponse(BaseModel):
+    title: str
+    content: str
+    tags: List[str]
+
+
 class AnswerSuggestResponse(BaseModel):
     answer: str
     code_example: str | None = None
@@ -50,6 +58,7 @@ async def ai_quality_check(
     content: str | None = None,
     code_content: str | None = None,
     coding_language: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     messages = compile_prompt(
         QUALITY_CHECK_SYSTEM_PROMPT,
@@ -59,6 +68,7 @@ async def ai_quality_check(
         content=content or "(no text content)",
         code_content=code_content or "(no code)",
         coding_language=coding_language or "(none)",
+        tags=", ".join(tags) if tags else "(no tags selected)",
     )
 
     result = await run_llm_with_openai(
@@ -150,4 +160,39 @@ async def ai_suggest_answer(
         "answer": result.answer,
         "code_example": result.code_example,
         "coding_language": result.coding_language,
+    }
+
+
+async def ai_apply_suggestions(
+    post_type: str,
+    title: str,
+    content: str | None = None,
+    code_content: str | None = None,
+    tags: list[str] | None = None,
+    suggestions: list[str] | None = None,
+) -> dict:
+    suggestions_text = "\n".join(f"- {s}" for s in (suggestions or []))
+
+    messages = compile_prompt(
+        APPLY_SUGGESTIONS_SYSTEM_PROMPT,
+        APPLY_SUGGESTIONS_USER_PROMPT,
+        post_type=post_type,
+        title=title,
+        content=content or "(no text content)",
+        code_content=code_content or "(no code)",
+        tags=", ".join(tags) if tags else "(no tags)",
+        suggestions=suggestions_text or "(no suggestions)",
+    )
+
+    result = await run_llm_with_openai(
+        model=MODEL,
+        messages=messages,
+        response_model=ApplySuggestionsResponse,
+        max_output_tokens=1000,
+    )
+
+    return {
+        "title": result.title,
+        "content": result.content,
+        "tags": result.tags,
     }

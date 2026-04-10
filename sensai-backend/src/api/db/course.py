@@ -17,6 +17,7 @@ from api.config import (
     question_scorecards_table_name,
     cohorts_table_name,
     course_cohorts_table_name,
+    user_cohorts_table_name,
     uncategorized_milestone_name,
     task_generation_jobs_table_name,
     organizations_table_name,
@@ -127,6 +128,37 @@ async def calculate_milestone_unlock_dates(
         non_empty_module_count += 1
 
     return course_details
+
+
+async def get_user_cohort_joined_at(user_id: int, cohort_id: int) -> datetime | None:
+    """Get the joined_at timestamp for a user in a cohort."""
+    row = await execute_db_operation(
+        f"SELECT joined_at FROM {user_cohorts_table_name} WHERE user_id = ? AND cohort_id = ? AND deleted_at IS NULL",
+        (user_id, cohort_id),
+        fetch_one=True,
+    )
+    if not row or not row[0]:
+        return None
+    return datetime.fromisoformat(row[0]) if isinstance(row[0], str) else row[0]
+
+
+async def get_drip_config_for_course_cohort(course_id: int, cohort_id: int) -> Dict | None:
+    """Get drip config for a specific course-cohort pair."""
+    row = await execute_db_operation(
+        f"""SELECT is_drip_enabled, frequency_value, frequency_unit, publish_at
+            FROM {course_cohorts_table_name}
+            WHERE course_id = ? AND cohort_id = ? AND deleted_at IS NULL""",
+        (course_id, cohort_id),
+        fetch_one=True,
+    )
+    if not row:
+        return None
+    return {
+        "is_drip_enabled": row[0],
+        "frequency_value": row[1],
+        "frequency_unit": row[2],
+        "publish_at": row[3],
+    }
 
 
 async def get_courses_for_cohort(

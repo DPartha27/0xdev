@@ -11,11 +11,12 @@ interface NetworkFeedProps {
     orgId: number | null;
     selectedTag: string | null;
     userRole?: string;
+    postType?: string;
 }
 
 type FilterType = 'for_you' | 'recent' | 'popular' | 'unanswered';
 
-export default function NetworkFeed({ orgId, selectedTag, userRole }: NetworkFeedProps) {
+export default function NetworkFeed({ orgId, selectedTag, userRole, postType }: NetworkFeedProps) {
     const router = useRouter();
     const { user } = useAuth();
     const [activeFilter, setActiveFilter] = useState<FilterType>('for_you');
@@ -23,7 +24,7 @@ export default function NetworkFeed({ orgId, selectedTag, userRole }: NetworkFee
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-    const { posts, isLoading, setPosts } = useNetworkFeed(orgId, activeFilter, selectedTag || undefined, debouncedSearch || undefined);
+    const { posts, isLoading, setPosts } = useNetworkFeed(orgId, activeFilter, selectedTag || undefined, debouncedSearch || undefined, postType);
 
     // Debounce search
     useEffect(() => {

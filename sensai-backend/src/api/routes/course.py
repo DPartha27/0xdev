@@ -14,6 +14,9 @@ from api.db.course import (
     add_milestone_to_course as add_milestone_to_course_in_db,
     update_milestone_orders as update_milestone_orders_in_db,
     get_course as get_course_from_db,
+    calculate_milestone_unlock_dates,
+    get_drip_config_for_course_cohort as get_drip_config_from_db,
+    get_user_cohort_joined_at as get_user_cohort_joined_at_from_db,
     swap_milestone_ordering_for_course as swap_milestone_ordering_for_course_in_db,
     swap_task_ordering_for_course as swap_task_ordering_for_course_in_db,
     duplicate_course_to_org,
@@ -57,9 +60,23 @@ async def get_all_courses_for_org(org_id: int) -> List[Course]:
 
 @router.get("/{course_id}", response_model=CourseWithMilestonesAndTasks)
 async def get_course(
-    course_id: int, only_published: bool = True
+    course_id: int,
+    only_published: bool = True,
+    cohort_id: int | None = None,
+    user_id: int | None = None,
 ) -> CourseWithMilestonesAndTasks:
-    return await get_course_from_db(course_id, only_published)
+    course_details = await get_course_from_db(course_id, only_published)
+    # Apply drip milestone filtering when learner context is provided
+    if cohort_id:
+        drip_config = await get_drip_config_from_db(course_id, cohort_id)
+        if drip_config and drip_config.get("is_drip_enabled"):
+            joined_at = None
+            if user_id:
+                joined_at = await get_user_cohort_joined_at_from_db(user_id, cohort_id)
+            course_details = await calculate_milestone_unlock_dates(
+                course_details, drip_config, joined_at
+            )
+    return course_details
 
 
 @router.post("/tasks")

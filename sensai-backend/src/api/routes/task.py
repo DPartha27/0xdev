@@ -3,6 +3,7 @@ from typing import List, Dict
 from api.db.task import (
     get_solved_tasks_for_user as get_solved_tasks_for_user_from_db,
     get_task as get_task_from_db,
+    get_basic_task_details as get_basic_task_details_from_db,
     delete_task as delete_task_in_db,
     delete_tasks as delete_tasks_in_db,
     create_draft_task_for_course as create_draft_task_for_course_in_db,
@@ -15,6 +16,7 @@ from api.db.task import (
     create_assignment as create_assignment_in_db,
     update_assignment as update_assignment_in_db,
 )
+from api.reputation import recompute_user_badge
 from api.models import (
     Task,
     LearningMaterialTask,
@@ -158,6 +160,10 @@ async def get_task(task_id: int) -> LearningMaterialTask | QuizTask | Assignment
 @router.post("/{task_id}/complete")
 async def mark_task_completed(task_id: int, request: MarkTaskCompletedRequest):
     await mark_task_completed_in_db(task_id, request.user_id)
+    # Recompute badge since learning_score depends on task completions
+    task_details = await get_basic_task_details_from_db(task_id)
+    if task_details:
+        await recompute_user_badge(request.user_id, task_details["org_id"])
     return {"success": True}
 
 
