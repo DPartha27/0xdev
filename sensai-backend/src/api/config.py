@@ -61,6 +61,16 @@ integrations_table_name = "integrations"
 bq_sync_table_name = "bq_sync"
 assignment_table_name = "assignment"
 
+# Network Hub tables
+network_posts_table_name = "network_posts"
+network_tags_table_name = "network_tags"
+network_post_tags_table_name = "network_post_tags"
+network_comments_table_name = "network_comments"
+network_votes_table_name = "network_votes"
+network_poll_options_table_name = "network_poll_options"
+network_poll_votes_table_name = "network_poll_votes"
+user_network_profiles_table_name = "user_network_profiles"
+
 UPLOAD_FOLDER_NAME = "uploads"
 
 uncategorized_milestone_name = "[UNASSIGNED]"
