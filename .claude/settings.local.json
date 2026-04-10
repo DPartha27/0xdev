@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /d/HyperVerge/sensai-backend/src/api/db/*.py)",
+      "Bash(ls d:/HyperVerge/sensai-frontend/src/app/school/[id]/cohort/[cohortId]/)",
+      "Bash(mkdir -p \"d:/HyperVerge/sensai-frontend/src/app/school/[id]/network/[hubSlug]/posts/[postId]\")",
+      "Bash(mkdir -p \"d:/HyperVerge/sensai-frontend/src/app/school/[id]/network/[hubSlug]/settings\")",
+      "Bash(mkdir -p \"d:/HyperVerge/sensai-frontend/src/app/school/[id]/network/search\")",
+      "Bash(mkdir -p \"d:/HyperVerge/sensai-frontend/src/app/school/[id]/network/profile/[userId]\")",
+      "Bash(mkdir -p \"d:/HyperVerge/sensai-frontend/src/app/school/admin/[id]/network/hubs/[hubSlug]\")",
+      "Bash(node -e \"const icons = require\\('d:/HyperVerge/sensai-frontend/node_modules/lucide-react'\\); console.log\\('Network' in icons\\);\")",
+      "Bash(xargs cat:*)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs head:*)",
+      "Bash(uv run:*)"
+    ]
+  }
+}

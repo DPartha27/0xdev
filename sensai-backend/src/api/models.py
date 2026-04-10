@@ -799,3 +799,341 @@ class UpdateIntegrationRequest(BaseModel):
     access_token: str | None = None
     refresh_token: str | None = None
     expires_at: datetime | None = None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Learning Network Platform Models
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Enums ─────────────────────────────────────────────────────────────────────
+
+class HubVisibility(str, Enum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+    ARCHIVED = "archived"
+
+
+class HubMemberRole(str, Enum):
+    MEMBER = "member"
+    MODERATOR = "moderator"
+    OWNER = "owner"
+
+
+class PostType(str, Enum):
+    THREAD = "thread"
+    QUESTION = "question"
+    NOTE = "note"
+    POLL = "poll"
+
+
+class PostStatus(str, Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    CLOSED = "closed"
+    ARCHIVED = "archived"
+
+
+class PostLifecycleStatus(str, Enum):
+    ACTIVE = "active"
+    STALE = "stale"
+    ARCHIVED = "archived"
+    EVERGREEN = "evergreen"
+
+
+class VoteValue(int, Enum):
+    UPVOTE = 1
+    DOWNVOTE = -1
+
+
+class FlagReason(str, Enum):
+    SPAM = "spam"
+    OFFENSIVE = "offensive"
+    OFF_TOPIC = "off_topic"
+    MISINFORMATION = "misinformation"
+    OTHER = "other"
+
+
+class FlagStatus(str, Enum):
+    PENDING = "pending"
+    REVIEWED = "reviewed"
+    ACTIONED = "actioned"
+    DISMISSED = "dismissed"
+
+
+class ReputationLevel(str, Enum):
+    NEWCOMER = "newcomer"
+    CONTRIBUTOR = "contributor"
+    ACTIVE_LEARNER = "active_learner"
+    TRUSTED_MEMBER = "trusted_member"
+    SUBJECT_EXPERT = "subject_expert"
+    COMMUNITY_LEADER = "community_leader"
+
+
+class PostRelationType(str, Enum):
+    RELATED = "related"
+    EXPLAINS = "explains"
+    EXTENDS = "extends"
+
+
+# ── Skill Models ──────────────────────────────────────────────────────────────
+
+class CreateSkillRequest(BaseModel):
+    org_id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    parent_skill_id: Optional[int] = None
+
+
+class UpdateSkillRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parent_skill_id: Optional[int] = None
+
+
+class LinkSkillsToTaskRequest(BaseModel):
+    task_id: int
+    skill_ids: List[int]
+
+
+class UnlinkSkillsFromTaskRequest(BaseModel):
+    task_id: int
+    skill_ids: List[int]
+
+
+class SkillResponse(BaseModel):
+    id: int
+    org_id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    parent_skill_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class CreateSkillResponse(BaseModel):
+    id: int
+
+
+# ── Hub Models ────────────────────────────────────────────────────────────────
+
+class CreateHubRequest(BaseModel):
+    org_id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    visibility: HubVisibility = HubVisibility.PUBLIC
+    created_by: int
+    skill_ids: Optional[List[int]] = []
+    course_ids: Optional[List[int]] = []
+
+
+class UpdateHubRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    visibility: Optional[HubVisibility] = None
+
+
+class AddHubMembersRequest(BaseModel):
+    user_ids: List[int]
+    role: HubMemberRole = HubMemberRole.MEMBER
+
+
+class RemoveHubMembersRequest(BaseModel):
+    user_ids: List[int]
+
+
+class UpdateHubMemberRoleRequest(BaseModel):
+    role: HubMemberRole
+
+
+class LinkHubSkillsRequest(BaseModel):
+    skill_ids: List[int]
+
+
+class LinkHubCoursesRequest(BaseModel):
+    course_ids: List[int]
+
+
+class CreateHubResponse(BaseModel):
+    id: int
+
+
+class HubSummaryResponse(BaseModel):
+    id: int
+    org_id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    visibility: str
+    created_by: int
+    member_count: int
+    post_count: int
+    skills: List[SkillResponse] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# ── Post Models ───────────────────────────────────────────────────────────────
+
+class CreatePostRequest(BaseModel):
+    hub_id: int
+    author_id: int
+    post_type: PostType
+    title: str
+    blocks: Optional[List[Dict]] = []
+    skill_ids: Optional[List[int]] = []
+    task_ids: Optional[List[int]] = []
+    poll_options: Optional[List[str]] = []
+    status: PostStatus = PostStatus.PUBLISHED
+
+
+class UpdatePostRequest(BaseModel):
+    title: Optional[str] = None
+    blocks: Optional[List[Dict]] = None
+    status: Optional[PostStatus] = None
+
+
+class CreateReplyRequest(BaseModel):
+    author_id: int
+    blocks: List[Dict]
+    parent_reply_id: Optional[int] = None
+
+
+class UpdateReplyRequest(BaseModel):
+    blocks: List[Dict]
+
+
+class VoteRequest(BaseModel):
+    user_id: int
+    value: VoteValue
+    view_duration_ms: Optional[int] = None
+
+
+class BookmarkRequest(BaseModel):
+    user_id: int
+
+
+class PollVoteRequest(BaseModel):
+    user_id: int
+    option_id: int
+
+
+class EndorseReplyRequest(BaseModel):
+    endorser_id: int
+    skill_id: Optional[int] = None
+
+
+class LinkPostSkillsRequest(BaseModel):
+    skill_ids: List[int]
+
+
+class LinkPostTasksRequest(BaseModel):
+    task_ids: List[int]
+    relation_type: PostRelationType = PostRelationType.RELATED
+
+
+class CreatePostResponse(BaseModel):
+    id: int
+
+
+class ReplyResponse(BaseModel):
+    id: int
+    post_id: int
+    parent_reply_id: Optional[int] = None
+    author_id: int
+    author_name: Optional[str] = None
+    blocks: Optional[Any] = None
+    upvote_count: int
+    downvote_count: int
+    is_accepted: bool
+    endorsement_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class PostSummaryResponse(BaseModel):
+    id: int
+    hub_id: int
+    author_id: int
+    author_name: Optional[str] = None
+    post_type: str
+    title: str
+    status: str
+    lifecycle_status: str
+    is_pinned: bool
+    upvote_count: int
+    downvote_count: int
+    reply_count: int
+    view_count: int
+    has_accepted_answer: bool
+    skills: List[SkillResponse] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class PostDetailResponse(PostSummaryResponse):
+    blocks: Optional[Any] = None
+    replies: List[ReplyResponse] = []
+    linked_tasks: List[Dict] = []
+    is_bookmarked: bool = False
+    user_vote: Optional[int] = None
+    poll_options: Optional[List[Dict]] = None
+
+
+# ── Reputation Models ─────────────────────────────────────────────────────────
+
+class UserReputationResponse(BaseModel):
+    user_id: int
+    org_id: int
+    total_points: int
+    level: str
+    updated_at: Optional[datetime] = None
+
+
+class ReputationEventResponse(BaseModel):
+    id: int
+    event_type: str
+    points: int
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+# ── Moderation Models ─────────────────────────────────────────────────────────
+
+class FlagContentRequest(BaseModel):
+    reporter_id: int
+    reason: FlagReason
+    description: Optional[str] = None
+
+
+class ReviewFlagRequest(BaseModel):
+    reviewed_by: int
+    action_taken: str  # 'none', 'hidden', 'deleted', 'warned'
+
+
+class FlagResponse(BaseModel):
+    id: int
+    reporter_id: int
+    target_type: str
+    target_id: int
+    reason: str
+    status: str
+    created_at: Optional[datetime] = None
+
+
+# ── Search Models ─────────────────────────────────────────────────────────────
+
+class SearchResultResponse(BaseModel):
+    type: str  # 'post', 'hub', 'skill'
+    id: int
+    title: str
+    snippet: str
+    hub_name: Optional[str] = None
+    skill_tags: Optional[List[str]] = []
+    score: float = 0.0

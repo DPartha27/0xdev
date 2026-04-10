@@ -32,6 +32,28 @@ from api.config import (
     integrations_table_name,
     assignment_table_name,
     bq_sync_table_name,
+    # Learning Network Platform
+    skills_table_name,
+    task_skills_table_name,
+    user_skills_table_name,
+    hubs_table_name,
+    hub_members_table_name,
+    hub_skills_table_name,
+    hub_courses_table_name,
+    posts_table_name,
+    post_skills_table_name,
+    post_tasks_table_name,
+    replies_table_name,
+    votes_table_name,
+    bookmarks_table_name,
+    poll_options_table_name,
+    poll_votes_table_name,
+    reputation_events_table_name,
+    user_reputation_table_name,
+    endorsements_table_name,
+    vote_audit_table_name,
+    content_quality_table_name,
+    flags_table_name,
 )
 from api.db.migration import run_migrations
 
@@ -647,6 +669,439 @@ async def create_code_drafts_table(cursor):
     )
 
 
+# ── Phase 1: Skills ────────────────────────────────────────────────────────────
+
+async def create_skills_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {skills_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                description TEXT,
+                parent_skill_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(org_id, slug),
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_skill_id) REFERENCES {skills_table_name}(id) ON DELETE SET NULL
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_skill_org_id ON {skills_table_name} (org_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_skill_parent_id ON {skills_table_name} (parent_skill_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_skill_slug ON {skills_table_name} (slug)")
+
+
+async def create_task_skills_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {task_skills_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(task_id, skill_id),
+                FOREIGN KEY (task_id) REFERENCES {tasks_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES {skills_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_task_skill_task_id ON {task_skills_table_name} (task_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_task_skill_skill_id ON {task_skills_table_name} (skill_id)")
+
+
+async def create_user_skills_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {user_skills_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                proficiency_level INTEGER NOT NULL DEFAULT 0,
+                evidence_count INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(user_id, skill_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES {skills_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_skill_user_id ON {user_skills_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_skill_skill_id ON {user_skills_table_name} (skill_id)")
+
+
+# ── Phase 2: Hubs ──────────────────────────────────────────────────────────────
+
+async def create_hubs_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {hubs_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                description TEXT,
+                icon TEXT,
+                visibility TEXT NOT NULL DEFAULT 'public',
+                created_by INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(org_id, slug),
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_org_id ON {hubs_table_name} (org_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_slug ON {hubs_table_name} (slug)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_created_by ON {hubs_table_name} (created_by)")
+
+
+async def create_hub_members_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {hub_members_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hub_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(hub_id, user_id),
+                FOREIGN KEY (hub_id) REFERENCES {hubs_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_member_hub_id ON {hub_members_table_name} (hub_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_member_user_id ON {hub_members_table_name} (user_id)")
+
+
+async def create_hub_skills_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {hub_skills_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hub_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(hub_id, skill_id),
+                FOREIGN KEY (hub_id) REFERENCES {hubs_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES {skills_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_skill_hub_id ON {hub_skills_table_name} (hub_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_skill_skill_id ON {hub_skills_table_name} (skill_id)")
+
+
+async def create_hub_courses_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {hub_courses_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hub_id INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(hub_id, course_id),
+                FOREIGN KEY (hub_id) REFERENCES {hubs_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (course_id) REFERENCES {courses_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_course_hub_id ON {hub_courses_table_name} (hub_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_hub_course_course_id ON {hub_courses_table_name} (course_id)")
+
+
+# ── Phase 3: Posts & Content ───────────────────────────────────────────────────
+
+async def create_posts_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {posts_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hub_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                post_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                blocks TEXT,
+                status TEXT NOT NULL DEFAULT 'published',
+                lifecycle_status TEXT NOT NULL DEFAULT 'active',
+                is_pinned INTEGER DEFAULT 0,
+                is_wiki INTEGER DEFAULT 0,
+                view_count INTEGER DEFAULT 0,
+                upvote_count INTEGER DEFAULT 0,
+                downvote_count INTEGER DEFAULT 0,
+                reply_count INTEGER DEFAULT 0,
+                accepted_reply_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (hub_id) REFERENCES {hubs_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (author_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_hub_id ON {posts_table_name} (hub_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_author_id ON {posts_table_name} (author_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_type ON {posts_table_name} (post_type)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_status ON {posts_table_name} (status)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_created_at ON {posts_table_name} (created_at)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_lifecycle ON {posts_table_name} (lifecycle_status)")
+
+
+async def create_post_skills_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {post_skills_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(post_id, skill_id),
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES {skills_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_skill_post_id ON {post_skills_table_name} (post_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_skill_skill_id ON {post_skills_table_name} (skill_id)")
+
+
+async def create_post_tasks_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {post_tasks_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                task_id INTEGER NOT NULL,
+                relation_type TEXT NOT NULL DEFAULT 'related',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(post_id, task_id),
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (task_id) REFERENCES {tasks_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_task_post_id ON {post_tasks_table_name} (post_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_post_task_task_id ON {post_tasks_table_name} (task_id)")
+
+
+async def create_replies_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {replies_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                parent_reply_id INTEGER,
+                author_id INTEGER NOT NULL,
+                blocks TEXT,
+                upvote_count INTEGER DEFAULT 0,
+                downvote_count INTEGER DEFAULT 0,
+                is_accepted INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_reply_id) REFERENCES {replies_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (author_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_reply_post_id ON {replies_table_name} (post_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_reply_parent_id ON {replies_table_name} (parent_reply_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_reply_author_id ON {replies_table_name} (author_id)")
+
+
+async def create_votes_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {votes_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                value INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(user_id, target_type, target_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_vote_user_id ON {votes_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_vote_target ON {votes_table_name} (target_type, target_id)")
+
+
+async def create_bookmarks_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {bookmarks_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(user_id, post_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_bookmark_user_id ON {bookmarks_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_bookmark_post_id ON {bookmarks_table_name} (post_id)")
+
+
+async def create_poll_options_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {poll_options_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                vote_count INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_poll_option_post_id ON {poll_options_table_name} (post_id)")
+
+
+async def create_poll_votes_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {poll_votes_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                poll_option_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(user_id, post_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (poll_option_id) REFERENCES {poll_options_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_poll_vote_user_id ON {poll_votes_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_poll_vote_option_id ON {poll_votes_table_name} (poll_option_id)")
+
+
+# ── Phase 4: Reputation ────────────────────────────────────────────────────────
+
+async def create_reputation_events_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {reputation_events_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                org_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                points INTEGER NOT NULL,
+                source_type TEXT,
+                source_id INTEGER,
+                granted_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (granted_by) REFERENCES {users_table_name}(id) ON DELETE SET NULL
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_rep_event_user_id ON {reputation_events_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_rep_event_org_id ON {reputation_events_table_name} (org_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_rep_event_created_at ON {reputation_events_table_name} (created_at)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_rep_event_type ON {reputation_events_table_name} (event_type)")
+
+
+async def create_user_reputation_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {user_reputation_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                org_id INTEGER NOT NULL,
+                total_points INTEGER NOT NULL DEFAULT 0,
+                level TEXT NOT NULL DEFAULT 'newcomer',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, org_id),
+                FOREIGN KEY (user_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (org_id) REFERENCES {organizations_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_rep_user_id ON {user_reputation_table_name} (user_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_rep_org_id ON {user_reputation_table_name} (org_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_user_rep_total_points ON {user_reputation_table_name} (total_points)")
+
+
+async def create_endorsements_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {endorsements_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                endorser_id INTEGER NOT NULL,
+                reply_id INTEGER NOT NULL,
+                skill_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                UNIQUE(endorser_id, reply_id),
+                FOREIGN KEY (endorser_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_id) REFERENCES {replies_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES {skills_table_name}(id) ON DELETE SET NULL
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_endorsement_endorser_id ON {endorsements_table_name} (endorser_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_endorsement_reply_id ON {endorsements_table_name} (reply_id)")
+
+
+async def create_vote_audit_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {vote_audit_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                voter_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                post_id INTEGER,
+                reply_id INTEGER,
+                vote_type TEXT NOT NULL,
+                view_duration_ms INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (voter_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (recipient_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_vote_audit_voter_id ON {vote_audit_table_name} (voter_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_vote_audit_recipient_id ON {vote_audit_table_name} (recipient_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_vote_audit_created_at ON {vote_audit_table_name} (created_at)")
+
+
+async def create_content_quality_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {content_quality_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL UNIQUE,
+                clarity_score REAL,
+                relevance_score REAL,
+                helpfulness_score REAL,
+                originality_score REAL,
+                composite_score REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (post_id) REFERENCES {posts_table_name}(id) ON DELETE CASCADE
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_content_quality_post_id ON {content_quality_table_name} (post_id)")
+
+
+# ── Phase 5: Moderation ────────────────────────────────────────────────────────
+
+async def create_flags_table(cursor):
+    await cursor.execute(
+        f"""CREATE TABLE IF NOT EXISTS {flags_table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reporter_id INTEGER NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                description TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewed_by INTEGER,
+                reviewed_at DATETIME,
+                action_taken TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME,
+                FOREIGN KEY (reporter_id) REFERENCES {users_table_name}(id) ON DELETE CASCADE,
+                FOREIGN KEY (reviewed_by) REFERENCES {users_table_name}(id) ON DELETE SET NULL
+            )"""
+    )
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_flag_reporter_id ON {flags_table_name} (reporter_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_flag_target ON {flags_table_name} (target_type, target_id)")
+    await cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_flag_status ON {flags_table_name} (status)")
+
+
 async def init_db():
     # Ensure the database folder exists
     db_folder = os.path.dirname(sqlite_db_path)
@@ -709,6 +1164,38 @@ async def init_db():
             await create_assignment_table(cursor)
 
             await create_bq_sync_table(cursor)
+
+            # ── Learning Network Platform ──────────────────────────────────
+            # Phase 1: Skills
+            await create_skills_table(cursor)
+            await create_task_skills_table(cursor)
+            await create_user_skills_table(cursor)
+
+            # Phase 2: Hubs
+            await create_hubs_table(cursor)
+            await create_hub_members_table(cursor)
+            await create_hub_skills_table(cursor)
+            await create_hub_courses_table(cursor)
+
+            # Phase 3: Posts & Content
+            await create_posts_table(cursor)
+            await create_post_skills_table(cursor)
+            await create_post_tasks_table(cursor)
+            await create_replies_table(cursor)
+            await create_votes_table(cursor)
+            await create_bookmarks_table(cursor)
+            await create_poll_options_table(cursor)
+            await create_poll_votes_table(cursor)
+
+            # Phase 4: Reputation
+            await create_reputation_events_table(cursor)
+            await create_user_reputation_table(cursor)
+            await create_endorsements_table(cursor)
+            await create_vote_audit_table(cursor)
+            await create_content_quality_table(cursor)
+
+            # Phase 5: Moderation
+            await create_flags_table(cursor)
 
             await conn.commit()
 

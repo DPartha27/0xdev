@@ -123,11 +123,12 @@ export function useSchools() {
       .then(data => {
         // Transform the API response to match the expected format
         const formattedSchools: School[] = data.map((org: any) => ({
-          id: org.id,
+          id: org.id?.toString?.() ?? String(org.id),
           name: org.name,
           description: org.description,
           url: org.url,
           role: org.role,
+          slug: org.slug,
           createdAt: org.createdAt,
           updatedAt: org.updatedAt
         }));

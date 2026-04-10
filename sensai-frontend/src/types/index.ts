@@ -68,4 +68,7 @@ export interface Milestone {
 // Export all quiz types
 export * from './quiz';
 
+// Export Learning Network Platform types
+export * from './network';
+
 // Export other types as needed 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Header } from "@/components/layout/header";
-import { Edit, Save, Users, BookOpen, Layers, Building, ChevronDown, Trash2, ExternalLink } from "lucide-react";
+import { Edit, Save, Users, BookOpen, Layers, Building, ChevronDown, Trash2, ExternalLink, Network } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -549,6 +549,13 @@ export default function ClientSchoolAdminView({ id }: { id: string }) {
                                         </div>
                                     </div>
                                 </div>
+                                <Link
+                                    href={`/school/admin/${id}/network`}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors text-sm font-medium"
+                                >
+                                    <Network size={16} />
+                                    Network
+                                </Link>
                             </div>
                         </div>
 

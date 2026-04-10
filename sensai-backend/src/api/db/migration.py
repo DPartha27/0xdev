@@ -1,7 +1,7 @@
 import json
 
 from api.models import TaskStatus, TaskType, QuestionType, TaskAIResponseType
-from api.utils.db import get_new_db_connection
+from api.utils.db import get_new_db_connection, check_table_exists
 from api.config import (
     questions_table_name,
     organizations_table_name,
@@ -231,5 +231,70 @@ async def cleanup_invalid_chat_history():
         await conn.commit()
 
 
+async def create_learning_network_tables():
+    """Migration: Creates all Learning Network Platform tables if they don't exist."""
+    from api.db import (
+        create_skills_table,
+        create_task_skills_table,
+        create_user_skills_table,
+        create_hubs_table,
+        create_hub_members_table,
+        create_hub_skills_table,
+        create_hub_courses_table,
+        create_posts_table,
+        create_post_skills_table,
+        create_post_tasks_table,
+        create_replies_table,
+        create_votes_table,
+        create_bookmarks_table,
+        create_poll_options_table,
+        create_poll_votes_table,
+        create_reputation_events_table,
+        create_user_reputation_table,
+        create_endorsements_table,
+        create_vote_audit_table,
+        create_content_quality_table,
+        create_flags_table,
+    )
+    from api.config import skills_table_name
+
+    async with get_new_db_connection() as conn:
+        cursor = await conn.cursor()
+
+        # Only run if the skills table doesn't exist (first migration)
+        if not await check_table_exists(skills_table_name, cursor):
+            await create_skills_table(cursor)
+            await create_task_skills_table(cursor)
+            await create_user_skills_table(cursor)
+            await create_hubs_table(cursor)
+            await create_hub_members_table(cursor)
+            await create_hub_skills_table(cursor)
+            await create_hub_courses_table(cursor)
+            await create_posts_table(cursor)
+            await create_post_skills_table(cursor)
+            await create_post_tasks_table(cursor)
+            await create_replies_table(cursor)
+            await create_votes_table(cursor)
+            await create_bookmarks_table(cursor)
+            await create_poll_options_table(cursor)
+            await create_poll_votes_table(cursor)
+            await create_reputation_events_table(cursor)
+            await create_user_reputation_table(cursor)
+            await create_endorsements_table(cursor)
+            await create_vote_audit_table(cursor)
+            await create_content_quality_table(cursor)
+            await create_flags_table(cursor)
+
+        await conn.commit()
+
+
+async def create_fts_tables_migration():
+    """Migration: Creates FTS5 virtual tables for search if they don't exist."""
+    from api.db.search import ensure_fts_tables
+    await ensure_fts_tables()
+
+
 async def run_migrations():
     await cleanup_invalid_chat_history()
+    await create_learning_network_tables()
+    await create_fts_tables_migration()

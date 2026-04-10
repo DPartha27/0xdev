@@ -26,6 +26,12 @@ from api.routes import (
     ai,
     scorecard,
     integration,
+    skill,
+    hub,
+    post,
+    reputation,
+    moderation,
+    search,
 )
 
 # from api.routes.ai import (
@@ -35,6 +41,7 @@ from api.routes import (
 from api.websockets import router as websocket_router
 from api.scheduler import scheduler
 from api.settings import settings
+from api.db import init_db
 import sentry_sdk
 
 
@@ -42,6 +49,9 @@ import sentry_sdk
 async def lifespan(app: FastAPI):
     # Initialize comprehensive logging as the very first step
     logger.info("Starting application")
+
+    # Create / migrate database tables on every startup
+    await init_db()
 
     scheduler.start()
 
@@ -134,6 +144,14 @@ app.include_router(code.router, prefix="/code", tags=["code"])
 app.include_router(hva.router, prefix="/hva", tags=["hva"])
 app.include_router(websocket_router, prefix="/ws", tags=["websockets"])
 app.include_router(integration.router, prefix="/integrations", tags=["integrations"])
+
+# ── Learning Network Platform ──────────────────────────────────────────────────
+app.include_router(skill.router, prefix="/skills", tags=["skills"])
+app.include_router(hub.router, prefix="/hubs", tags=["hubs"])
+app.include_router(post.router, prefix="/posts", tags=["posts"])
+app.include_router(reputation.router, prefix="/reputation", tags=["reputation"])
+app.include_router(moderation.router, prefix="/moderation", tags=["moderation"])
+app.include_router(search.router, prefix="/search", tags=["search"])
 
 
 @app.exception_handler(Exception)

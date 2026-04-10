@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Header } from "@/components/layout/header";
-import { Building, ChevronDown, ChevronLeft, Info } from "lucide-react";
+import { Building, ChevronDown, ChevronLeft, Info, Network } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import CohortCard from "@/components/CohortCard";
 import { useAuth } from "@/lib/auth";
 import LearnerCohortView from "@/components/LearnerCohortView";
@@ -476,6 +477,14 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
                                                             {activeCohort.name}
                                                         </h2>
                                                     </div>
+                                                    <div className="flex items-center gap-2">
+                                                    <Link
+                                                        href={`/school/${slug}/network`}
+                                                        className="flex items-center gap-1 bg-teal-900 bg-opacity-80 text-white font-light text-sm border border-cyan-600 rounded-full px-3 py-1 hover:bg-emerald-700 hover:bg-opacity-70 transition-all"
+                                                    >
+                                                        <Network size={13} />
+                                                        Network
+                                                    </Link>
                                                     {cohorts.length > 1 && (
                                                         <button
                                                             className="bg-teal-900 bg-opacity-80 text-white font-light text-sm border border-cyan-600 rounded-full px-3 py-1 hover:bg-emerald-700 hover:bg-opacity-70 transition-all cursor-pointer"
@@ -503,6 +512,7 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
                                                             />
                                                         </>
                                                     )}
+                                                    </div>{/* end flex items-center gap-2 */}
                                                 </div>
                                             </div>
                                         )}
@@ -516,6 +526,17 @@ export default function ClientSchoolMemberView({ slug }: { slug: string }) {
                                             selectedId={activeCohort?.id}
                                             onSelect={handleCohortOptionSelect}
                                         />
+
+                                        {/* Desktop Network button */}
+                                        <div className="hidden sm:flex justify-end px-4 pt-3 pb-0">
+                                            <Link
+                                                href={`/school/${slug}/network`}
+                                                className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors text-sm font-medium"
+                                            >
+                                                <Network size={15} />
+                                                Network
+                                            </Link>
+                                        </div>
 
                                         {courses.length === 0 ? (
                                             <div className="pt-12 text-center px-4">
