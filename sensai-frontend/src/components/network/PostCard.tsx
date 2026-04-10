@@ -66,6 +66,7 @@ export default function PostCard({ post, onVote }: PostCardProps) {
                 <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {post.is_pinned && <Pin className="w-3 h-3 text-yellow-500" />}
                     {timeAgo(post.created_at)}
+                    {post.is_edited && <span className="text-gray-400 italic">(edited)</span>}
                 </div>
             </div>
 

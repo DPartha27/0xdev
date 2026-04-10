@@ -91,7 +91,7 @@ export default function MentorDashboard() {
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-black dark:hover:text-white mb-6 cursor-pointer"
             >
                 <ArrowLeft className="w-4 h-4" />
-                Back to Network
+                Back to SenseNet
             </button>
 
             <div className="flex items-center gap-3 mb-6">

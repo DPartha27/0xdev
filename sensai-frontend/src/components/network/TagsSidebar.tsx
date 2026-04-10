@@ -16,13 +16,17 @@ export default function TagsSidebar({ orgId, selectedTag, onTagSelect }: TagsSid
     const { tags: recommendedTags, isLoading: recommendedLoading } = useRecommendedTags(orgId);
 
     const filteredTrending = useMemo(() => {
-        if (!searchQuery) return trendingTags;
-        return trendingTags.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        const tags = searchQuery
+            ? trendingTags.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            : trendingTags;
+        return tags.slice(0, 5);
     }, [trendingTags, searchQuery]);
 
     const filteredRecommended = useMemo(() => {
-        if (!searchQuery) return recommendedTags;
-        return recommendedTags.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        const tags = searchQuery
+            ? recommendedTags.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
+            : recommendedTags;
+        return tags.slice(0, 5);
     }, [recommendedTags, searchQuery]);
 
     const handleTagClick = (slug: string) => {

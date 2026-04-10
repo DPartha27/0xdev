@@ -40,7 +40,6 @@ export default function PostDetail({ postId }: PostDetailProps) {
     const [post, setPost] = useState<NetworkPost | null>(null);
     const [comments, setComments] = useState<NetworkComment[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [aiAnswer, setAiAnswer] = useState<any>(null);
     const [aiAnswerLoading, setAiAnswerLoading] = useState(false);
 
     // Edit mode state
@@ -133,20 +132,14 @@ export default function PostDetail({ postId }: PostDetailProps) {
     const handleAiAnswer = async () => {
         if (!post) return;
         setAiAnswerLoading(true);
-        setAiAnswer(null);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/suggest-answer`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts/${postId}/ai-answer`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    post_type: post.post_type,
-                    title: post.title,
-                    content_text: post.content_text,
-                    code_content: post.code_content,
-                }),
             });
             if (res.ok) {
-                setAiAnswer(await res.json());
+                // AI answer posted as a bot comment — refresh comments
+                await fetchComments();
+                await fetchPost();
             }
         } catch (err) {
             console.error('AI answer failed:', err);
@@ -228,7 +221,7 @@ export default function PostDetail({ postId }: PostDetailProps) {
             <div className="max-w-3xl mx-auto px-4 sm:px-8 pt-6 pb-12 text-center">
                 <h2 className="text-xl font-medium text-gray-600 dark:text-gray-400">Post not found</h2>
                 <button onClick={() => router.push('/network')} className="mt-4 text-sm text-gray-500 hover:text-black dark:hover:text-white cursor-pointer">
-                    Back to Network
+                    Back to SenseNet
                 </button>
             </div>
         );
@@ -250,7 +243,7 @@ export default function PostDetail({ postId }: PostDetailProps) {
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-black dark:hover:text-white mb-6 cursor-pointer"
             >
                 <ArrowLeft className="w-4 h-4" />
-                Back to Network
+                Back to SenseNet
             </button>
 
             {/* Post header */}
@@ -270,6 +263,7 @@ export default function PostDetail({ postId }: PostDetailProps) {
                             <span>{config.label}</span>
                             <span>&middot;</span>
                             <span>{timeAgo(post.created_at)}</span>
+                            {post.is_edited && <span className="italic text-gray-400">(edited)</span>}
                             <span>&middot;</span>
                             <Eye className="w-3 h-3" />
                             <span>{post.view_count}</span>
@@ -320,6 +314,17 @@ export default function PostDetail({ postId }: PostDetailProps) {
                     {post.content_text}
                 </div>
             ) : null}
+
+            {/* Image */}
+            {!isEditing && post.image_url && (
+                <div className="mb-4">
+                    <img
+                        src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${post.image_url}`}
+                        alt="Post image"
+                        className="max-w-full rounded-lg border border-gray-200 dark:border-[#35363a]"
+                    />
+                </div>
+            )}
 
             {/* Code content */}
             {isEditing ? (
@@ -474,41 +479,14 @@ export default function PostDetail({ postId }: PostDetailProps) {
             {/* AI Suggest Answer — only for question posts */}
             {post.post_type === 'question' && (
                 <div className="my-4">
-                    {!aiAnswer && (
-                        <button
-                            onClick={handleAiAnswer}
-                            disabled={aiAnswerLoading}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-dashed border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 cursor-pointer transition-colors"
-                        >
-                            {aiAnswerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                            {aiAnswerLoading ? 'AI is thinking...' : 'Get AI-suggested answer'}
-                        </button>
-                    )}
-                    {aiAnswer && (
-                        <div className="p-4 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Sparkles className="w-4 h-4 text-purple-500" />
-                                <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">AI-Suggested Answer</span>
-                            </div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-3">{aiAnswer.answer}</p>
-                            {aiAnswer.code_example && (
-                                <div>
-                                    <div className="flex items-center justify-between px-3 py-1 bg-gray-200 dark:bg-[#2a2a2a] rounded-t-lg">
-                                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{aiAnswer.coding_language || 'code'}</span>
-                                    </div>
-                                    <pre className="text-sm bg-gray-100 dark:bg-[#1a1a1a] rounded-b-lg p-3 overflow-x-auto border border-gray-200 dark:border-[#35363a]">
-                                        <code>{aiAnswer.code_example}</code>
-                                    </pre>
-                                </div>
-                            )}
-                            <button
-                                onClick={() => setAiAnswer(null)}
-                                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-2 cursor-pointer"
-                            >
-                                Dismiss
-                            </button>
-                        </div>
-                    )}
+                    <button
+                        onClick={handleAiAnswer}
+                        disabled={aiAnswerLoading}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-dashed border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                        {aiAnswerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        {aiAnswerLoading ? 'SensAI Bot is answering...' : 'Ask SensAI Bot'}
+                    </button>
                 </div>
             )}
 

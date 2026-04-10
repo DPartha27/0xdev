@@ -324,7 +324,7 @@ export const addModule = async (courseId: string, schoolId: string, modules: Mod
 // ─── Network Hub Hooks ───
 
 
-export function useNetworkFeed(orgId: number | null, filter: string = 'recent', tag?: string, search?: string) {
+export function useNetworkFeed(orgId: number | null, filter: string = 'recent', tag?: string, search?: string, postType?: string) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [posts, setPosts] = useState<NetworkPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -344,6 +344,7 @@ export function useNetworkFeed(orgId: number | null, filter: string = 'recent', 
     });
     if (tag) params.set('tag', tag);
     if (search) params.set('q', search);
+    if (postType) params.set('post_type', postType);
 
     fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts?${params}`)
       .then(response => {
@@ -353,7 +354,7 @@ export function useNetworkFeed(orgId: number | null, filter: string = 'recent', 
       .then(data => setPosts(data))
       .catch(err => setError(err))
       .finally(() => setIsLoading(false));
-  }, [user?.id, isAuthenticated, authLoading, orgId, filter, tag, search]);
+  }, [user?.id, isAuthenticated, authLoading, orgId, filter, tag, search, postType]);
 
   return { posts, isLoading, error, setPosts };
 }

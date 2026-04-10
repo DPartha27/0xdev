@@ -41,6 +41,9 @@ dependencies = [
     "langfuse==3.5.1",
     "jiter==0.8.2",
     "instructor==1.11.3",
+    "open-clip-torch==2.29.0",
+    "Pillow==11.2.1",
+    "sentence-transformers==5.4.0",
 ]
 
 [build-system]

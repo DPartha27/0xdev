@@ -23,6 +23,45 @@ from api.utils.db import (
 )
 
 
+BOT_EMAIL = "sensai-bot@sensai.internal"
+
+
+async def get_or_create_bot_user() -> int:
+    """Return the user ID of the SensAI Bot user, creating it if needed."""
+    row = await execute_db_operation(
+        f"SELECT id FROM {users_table_name} WHERE email = ?",
+        (BOT_EMAIL,),
+        fetch_one=True,
+    )
+    if row:
+        return row[0]
+
+    bot_id = await execute_db_operation(
+        f"INSERT INTO {users_table_name} (email, first_name, last_name) VALUES (?, ?, ?)",
+        (BOT_EMAIL, "SensAI", "Bot"),
+        get_last_row_id=True,
+    )
+    return bot_id
+
+
+# ─── Helpers ───
+
+
+async def get_comment_author_and_org(comment_id: int) -> tuple[int, int, int] | None:
+    """Return (author_id, org_id, post_id) for a comment, or None if not found."""
+    row = await execute_db_operation(
+        f"""SELECT c.author_id, p.org_id, c.post_id
+            FROM {network_comments_table_name} c
+            JOIN {network_posts_table_name} p ON c.post_id = p.id
+            WHERE c.id = ? AND c.deleted_at IS NULL""",
+        (comment_id,),
+        fetch_one=True,
+    )
+    if not row:
+        return None
+    return (row[0], row[1], row[2])
+
+
 # ─── Tag Operations ───
 
 
@@ -115,6 +154,7 @@ async def create_post(
     content_text: str | None = None,
     code_content: str | None = None,
     coding_language: str | None = None,
+    image_url: str | None = None,
     tag_names: list[str] | None = None,
     poll_options: list[str] | None = None,
     status: str = "published",
@@ -126,9 +166,9 @@ async def create_post(
 
         await cursor.execute(
             f"""INSERT INTO {network_posts_table_name}
-                (org_id, author_id, post_type, title, blocks, content_text, code_content, coding_language, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (org_id, author_id, post_type, title, blocks_json, content_text, code_content, coding_language, status),
+                (org_id, author_id, post_type, title, blocks, content_text, code_content, coding_language, image_url, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (org_id, author_id, post_type, title, blocks_json, content_text, code_content, coding_language, image_url, status),
         )
         post_id = cursor.lastrowid
 
@@ -182,11 +222,12 @@ async def create_post(
 async def get_post_by_id(post_id: int, user_id: int | None = None) -> Dict | None:
     row = await execute_db_operation(
         f"""SELECT p.id, p.org_id, p.author_id, p.post_type, p.title, p.blocks, p.content_text,
-                p.code_content, p.coding_language, p.status, p.is_pinned, p.view_count,
+                p.code_content, p.coding_language, p.image_url, p.status, p.is_pinned, p.view_count,
                 p.reply_count, p.upvote_count, p.downvote_count, p.quality_score, p.created_at,
                 u.first_name, u.last_name, u.email,
                 COALESCE(np.badge_tier, 'Bronze 1') as badge_tier,
-                COALESCE(np.network_role, 'newbie') as network_role
+                COALESCE(np.network_role, 'newbie') as network_role,
+                COALESCE(p.is_edited, 0) as is_edited
             FROM {network_posts_table_name} p
             JOIN {users_table_name} u ON p.author_id = u.id
             LEFT JOIN {user_network_profiles_table_name} np ON p.author_id = np.user_id AND p.org_id = np.org_id
@@ -254,11 +295,11 @@ def _row_to_post_dict(row) -> Dict:
         "org_id": row[1],
         "author": {
             "id": row[2],
-            "first_name": row[17] or "",
-            "last_name": row[18] or "",
-            "email": row[19],
-            "badge_tier": row[20],
-            "network_role": row[21],
+            "first_name": row[18] or "",
+            "last_name": row[19] or "",
+            "email": row[20],
+            "badge_tier": row[21],
+            "network_role": row[22],
         },
         "post_type": row[3],
         "title": row[4],
@@ -266,17 +307,19 @@ def _row_to_post_dict(row) -> Dict:
         "content_text": row[6],
         "code_content": row[7],
         "coding_language": row[8],
-        "status": row[9],
-        "is_pinned": bool(row[10]),
-        "view_count": row[11],
-        "reply_count": row[12],
-        "upvote_count": row[13],
-        "downvote_count": row[14],
-        "quality_score": row[15],
+        "image_url": row[9],
+        "status": row[10],
+        "is_pinned": bool(row[11]),
+        "view_count": row[12],
+        "reply_count": row[13],
+        "upvote_count": row[14],
+        "downvote_count": row[15],
+        "quality_score": row[16],
         "tags": [],
         "user_vote": None,
         "poll_options": [],
-        "created_at": row[16],
+        "created_at": row[17],
+        "is_edited": bool(row[23]),
     }
 
 
@@ -286,16 +329,18 @@ async def get_network_feed(
     filter_type: str = "recent",
     tag_slug: str | None = None,
     search: str | None = None,
+    post_type: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> List[Dict]:
     base_query = f"""
         SELECT DISTINCT p.id, p.org_id, p.author_id, p.post_type, p.title, p.blocks, p.content_text,
-            p.code_content, p.coding_language, p.status, p.is_pinned, p.view_count,
+            p.code_content, p.coding_language, p.image_url, p.status, p.is_pinned, p.view_count,
             p.reply_count, p.upvote_count, p.downvote_count, p.quality_score, p.created_at,
             u.first_name, u.last_name, u.email,
             COALESCE(np.badge_tier, 'Bronze 1') as badge_tier,
-            COALESCE(np.network_role, 'newbie') as network_role
+            COALESCE(np.network_role, 'newbie') as network_role,
+            COALESCE(p.is_edited, 0) as is_edited
         FROM {network_posts_table_name} p
         JOIN {users_table_name} u ON p.author_id = u.id
         LEFT JOIN {user_network_profiles_table_name} np ON p.author_id = np.user_id AND p.org_id = np.org_id
@@ -313,8 +358,16 @@ async def get_network_feed(
         conditions.append("(p.title LIKE ? OR p.content_text LIKE ?)")
         params.extend([f"%{search}%", f"%{search}%"])
 
+    if post_type:
+        conditions.append("p.post_type = ?")
+        params.append(post_type)
+
     if filter_type == "unanswered":
         conditions.append("p.post_type = 'question' AND p.reply_count = 0")
+
+    if filter_type == "my_posts" and user_id:
+        conditions.append("p.author_id = ?")
+        params.append(user_id)
 
     where_clause = " WHERE " + " AND ".join(conditions)
 
@@ -359,11 +412,50 @@ async def get_network_feed(
     return posts
 
 
-async def delete_post(post_id: int):
-    await execute_db_operation(
-        f"UPDATE {network_posts_table_name} SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+async def delete_post(post_id: int) -> Dict | None:
+    """Soft-delete a post and clean up related counters."""
+    # Fetch post info before deleting
+    post = await execute_db_operation(
+        f"SELECT author_id, org_id FROM {network_posts_table_name} WHERE id = ? AND deleted_at IS NULL",
         (post_id,),
+        fetch_one=True,
     )
+    if not post:
+        return None
+
+    author_id, org_id = post[0], post[1]
+
+    async with get_new_db_connection() as conn:
+        cursor = await conn.cursor()
+
+        # Soft-delete the post
+        await cursor.execute(
+            f"UPDATE {network_posts_table_name} SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+            (post_id,),
+        )
+
+        # Decrement tag usage_count for all tags on this post
+        await cursor.execute(
+            f"""UPDATE {network_tags_table_name} SET usage_count = MAX(0, usage_count - 1)
+                WHERE id IN (SELECT tag_id FROM {network_post_tags_table_name} WHERE post_id = ?)""",
+            (post_id,),
+        )
+
+        # Decrement author's posts_count
+        await cursor.execute(
+            f"UPDATE {user_network_profiles_table_name} SET posts_count = MAX(0, posts_count - 1) WHERE user_id = ? AND org_id = ?",
+            (author_id, org_id),
+        )
+
+        # Soft-delete associated comments
+        await cursor.execute(
+            f"UPDATE {network_comments_table_name} SET deleted_at = CURRENT_TIMESTAMP WHERE post_id = ? AND deleted_at IS NULL",
+            (post_id,),
+        )
+
+        await conn.commit()
+
+    return {"author_id": author_id, "org_id": org_id}
 
 
 async def toggle_pin_post(post_id: int):
@@ -396,6 +488,9 @@ async def update_post(
     if coding_language is not None:
         updates.append("coding_language = ?")
         params.append(coding_language)
+
+    # Always mark as edited when content changes
+    updates.append("is_edited = 1")
 
     if not updates and tag_names is None:
         return await get_post_by_id(post_id)
@@ -455,11 +550,12 @@ async def get_pending_posts(org_id: int) -> List[Dict]:
     """Get all posts with pending_approval status for mentor review."""
     rows = await execute_db_operation(
         f"""SELECT DISTINCT p.id, p.org_id, p.author_id, p.post_type, p.title, p.blocks, p.content_text,
-            p.code_content, p.coding_language, p.status, p.is_pinned, p.view_count,
+            p.code_content, p.coding_language, p.image_url, p.status, p.is_pinned, p.view_count,
             p.reply_count, p.upvote_count, p.downvote_count, p.quality_score, p.created_at,
             u.first_name, u.last_name, u.email,
             COALESCE(np.badge_tier, 'Bronze 1') as badge_tier,
-            COALESCE(np.network_role, 'newbie') as network_role
+            COALESCE(np.network_role, 'newbie') as network_role,
+            COALESCE(p.is_edited, 0) as is_edited
         FROM {network_posts_table_name} p
         JOIN {users_table_name} u ON p.author_id = u.id
         LEFT JOIN {user_network_profiles_table_name} np ON p.author_id = np.user_id AND p.org_id = np.org_id
@@ -504,13 +600,14 @@ async def create_comment(
     content: str,
     code_content: str | None = None,
     coding_language: str | None = None,
+    image_url: str | None = None,
     parent_comment_id: int | None = None,
 ) -> Dict:
     comment_id = await execute_db_operation(
         f"""INSERT INTO {network_comments_table_name}
-            (post_id, author_id, content, code_content, coding_language, parent_comment_id)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-        (post_id, author_id, content, code_content, coding_language, parent_comment_id),
+            (post_id, author_id, content, code_content, coding_language, image_url, parent_comment_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (post_id, author_id, content, code_content, coding_language, image_url, parent_comment_id),
         get_last_row_id=True,
     )
 
@@ -542,7 +639,7 @@ async def create_comment(
 async def get_comment_by_id(comment_id: int) -> Dict | None:
     row = await execute_db_operation(
         f"""SELECT c.id, c.post_id, c.author_id, c.parent_comment_id, c.content, c.code_content,
-                c.coding_language, c.upvote_count, c.created_at,
+                c.coding_language, c.image_url, c.upvote_count, c.created_at,
                 u.first_name, u.last_name, u.email,
                 COALESCE(np.badge_tier, 'Bronze 1'), COALESCE(np.network_role, 'newbie')
             FROM {network_comments_table_name} c
@@ -560,27 +657,28 @@ async def get_comment_by_id(comment_id: int) -> Dict | None:
         "post_id": row[1],
         "author": {
             "id": row[2],
-            "first_name": row[9] or "",
-            "last_name": row[10] or "",
-            "email": row[11],
-            "badge_tier": row[12],
-            "network_role": row[13],
+            "first_name": row[10] or "",
+            "last_name": row[11] or "",
+            "email": row[12],
+            "badge_tier": row[13],
+            "network_role": row[14],
         },
         "parent_comment_id": row[3],
         "content": row[4],
         "code_content": row[5],
         "coding_language": row[6],
-        "upvote_count": row[7],
+        "image_url": row[7],
+        "upvote_count": row[8],
         "user_vote": None,
         "replies": [],
-        "created_at": row[8],
+        "created_at": row[9],
     }
 
 
 async def get_comments_for_post(post_id: int, user_id: int | None = None) -> List[Dict]:
     rows = await execute_db_operation(
         f"""SELECT c.id, c.post_id, c.author_id, c.parent_comment_id, c.content, c.code_content,
-                c.coding_language, c.upvote_count, c.created_at,
+                c.coding_language, c.image_url, c.upvote_count, c.created_at,
                 u.first_name, u.last_name, u.email,
                 COALESCE(np.badge_tier, 'Bronze 1'), COALESCE(np.network_role, 'newbie')
             FROM {network_comments_table_name} c
@@ -601,20 +699,21 @@ async def get_comments_for_post(post_id: int, user_id: int | None = None) -> Lis
             "post_id": row[1],
             "author": {
                 "id": row[2],
-                "first_name": row[9] or "",
-                "last_name": row[10] or "",
-                "email": row[11],
-                "badge_tier": row[12],
-                "network_role": row[13],
+                "first_name": row[10] or "",
+                "last_name": row[11] or "",
+                "email": row[12],
+                "badge_tier": row[13],
+                "network_role": row[14],
             },
             "parent_comment_id": row[3],
             "content": row[4],
             "code_content": row[5],
             "coding_language": row[6],
-            "upvote_count": row[7],
+            "image_url": row[7],
+            "upvote_count": row[8],
             "user_vote": None,
             "replies": [],
-            "created_at": row[8],
+            "created_at": row[9],
         }
 
         if user_id:
@@ -767,6 +866,85 @@ async def vote_on_poll(user_id: int, option_id: int) -> Dict:
     return {"success": True}
 
 
+# ─── Comment Management ───
+
+
+async def delete_comment(comment_id: int) -> Dict | None:
+    """Soft-delete a comment and update related counters."""
+    row = await execute_db_operation(
+        f"""SELECT c.author_id, c.post_id, p.org_id
+            FROM {network_comments_table_name} c
+            JOIN {network_posts_table_name} p ON c.post_id = p.id
+            WHERE c.id = ? AND c.deleted_at IS NULL""",
+        (comment_id,),
+        fetch_one=True,
+    )
+    if not row:
+        return None
+
+    author_id, post_id, org_id = row[0], row[1], row[2]
+
+    async with get_new_db_connection() as conn:
+        cursor = await conn.cursor()
+
+        # Soft-delete the comment
+        await cursor.execute(
+            f"UPDATE {network_comments_table_name} SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+            (comment_id,),
+        )
+
+        # Soft-delete child replies
+        await cursor.execute(
+            f"UPDATE {network_comments_table_name} SET deleted_at = CURRENT_TIMESTAMP WHERE parent_comment_id = ? AND deleted_at IS NULL",
+            (comment_id,),
+        )
+
+        # Decrement reply_count on the post
+        await cursor.execute(
+            f"UPDATE {network_posts_table_name} SET reply_count = MAX(0, reply_count - 1) WHERE id = ?",
+            (post_id,),
+        )
+
+        # Decrement author's comments_count
+        await cursor.execute(
+            f"UPDATE {user_network_profiles_table_name} SET comments_count = MAX(0, comments_count - 1) WHERE user_id = ? AND org_id = ?",
+            (author_id, org_id),
+        )
+
+        await conn.commit()
+
+    return {"author_id": author_id, "org_id": org_id, "post_id": post_id}
+
+
+async def update_comment(comment_id: int, content: str, code_content: str | None = None, coding_language: str | None = None) -> Dict | None:
+    """Update a comment's content."""
+    existing = await execute_db_operation(
+        f"SELECT id FROM {network_comments_table_name} WHERE id = ? AND deleted_at IS NULL",
+        (comment_id,),
+        fetch_one=True,
+    )
+    if not existing:
+        return None
+
+    updates = ["content = ?"]
+    params: list = [content]
+
+    if code_content is not None:
+        updates.append("code_content = ?")
+        params.append(code_content)
+    if coding_language is not None:
+        updates.append("coding_language = ?")
+        params.append(coding_language)
+
+    params.append(comment_id)
+    await execute_db_operation(
+        f"UPDATE {network_comments_table_name} SET {', '.join(updates)} WHERE id = ? AND deleted_at IS NULL",
+        tuple(params),
+    )
+
+    return await get_comment_by_id(comment_id)
+
+
 # ─── Profile Operations ───
 
 
@@ -842,3 +1020,38 @@ async def get_user_network_profile(user_id: int, org_id: int) -> Dict:
         "last_name": row[13] or "",
         "email": row[14],
     }
+
+
+async def get_network_leaderboard(org_id: int, limit: int = 50) -> List[Dict]:
+    """Get users ranked by badge_score for an organization."""
+    rows = await execute_db_operation(
+        f"""SELECT unp.user_id, unp.badge_tier, unp.badge_score, unp.learning_score,
+                unp.contribution_score, unp.posts_count, unp.comments_count,
+                unp.upvotes_received, unp.network_role,
+                u.first_name, u.last_name, u.email
+            FROM {user_network_profiles_table_name} unp
+            JOIN {users_table_name} u ON unp.user_id = u.id
+            WHERE unp.org_id = ? AND unp.badge_score > 0
+            ORDER BY unp.badge_score DESC
+            LIMIT ?""",
+        (org_id, limit),
+        fetch_all=True,
+    )
+    return [
+        {
+            "rank": i + 1,
+            "user_id": row[0],
+            "badge_tier": row[1],
+            "badge_score": row[2],
+            "learning_score": row[3],
+            "contribution_score": row[4],
+            "posts_count": row[5],
+            "comments_count": row[6],
+            "upvotes_received": row[7],
+            "network_role": row[8],
+            "first_name": row[9] or "",
+            "last_name": row[10] or "",
+            "email": row[11],
+        }
+        for i, row in enumerate(rows or [])
+    ]

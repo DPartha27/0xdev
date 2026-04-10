@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useSchools, useAllTags } from "@/lib/api";
-import { MessageSquare, HelpCircle, BarChart3, Code, Lightbulb, BookOpen, X, Plus, ArrowLeft, Sparkles, Shield, Tag, FileText, Loader2, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { MessageSquare, HelpCircle, BarChart3, Code, Lightbulb, BookOpen, X, Plus, ArrowLeft, Sparkles, Shield, Tag, FileText, Loader2, Clock, CheckCircle, AlertTriangle, ImagePlus, Trash2, Wand2 } from "lucide-react";
 
 const postTypes = [
     { key: 'thread', label: 'Thread', icon: MessageSquare, desc: 'Start a discussion' },
@@ -47,6 +47,11 @@ export default function CreatePostForm() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
+    // Image upload
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [imageUploading, setImageUploading] = useState(false);
+    const [imageError, setImageError] = useState<string | null>(null);
+
     // AI states
     const [aiQuality, setAiQuality] = useState<any>(null);
     const [aiLoading, setAiLoading] = useState<string | null>(null); // 'quality' | 'tags' | 'summarize' | null
@@ -70,6 +75,47 @@ export default function CreatePostForm() {
         setShowTagSuggestions(false);
     };
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImageError(null);
+        setImageUploading(true);
+
+        try {
+            // Step 1: Validate with CLIP
+            const validateForm = new FormData();
+            validateForm.append("file", file);
+            const validateRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/file/validate-image`, {
+                method: "POST",
+                body: validateForm,
+            });
+            if (!validateRes.ok) {
+                const err = await validateRes.json();
+                setImageError(err.detail || "Image rejected. Only educational images are allowed.");
+                return;
+            }
+
+            // Step 2: Upload locally
+            const uploadForm = new FormData();
+            uploadForm.append("file", file);
+            uploadForm.append("content_type", file.type);
+            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/file/upload-local`, {
+                method: "POST",
+                body: uploadForm,
+            });
+            if (uploadRes.ok) {
+                const data = await uploadRes.json();
+                setImageUrl(data.static_url);
+            }
+        } catch {
+            setImageError("Failed to upload image.");
+        } finally {
+            setImageUploading(false);
+            e.target.value = "";
+        }
+    };
+
     const removeTag = (name: string) => {
         setSelectedTags(selectedTags.filter(t => t !== name));
     };
@@ -78,24 +124,38 @@ export default function CreatePostForm() {
         post_type: postType,
         title: title.trim(),
         content_text: content || null,
-        code_content: postType === 'code_snippet' ? codeContent : null,
-        coding_language: postType === 'code_snippet' ? codingLanguage : null,
+        code_content: codeContent.trim() ? codeContent : null,
+        coding_language: codeContent.trim() ? codingLanguage : null,
         org_id: orgId,
+        tags: selectedTags.length > 0 ? selectedTags : null,
     });
 
-    // AI: Quality Check
+    // AI: Quality Check + Auto-Tag (runs both in parallel)
     const handleQualityCheck = async () => {
         if (!title.trim()) return;
         setAiLoading('quality');
         setAiQuality(null);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/quality-check`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(getAiRequestBody()),
-            });
-            if (res.ok) {
-                setAiQuality(await res.json());
+            const body = getAiRequestBody();
+            const [qualityRes, tagRes] = await Promise.all([
+                fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/quality-check`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                }),
+                fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/auto-tag`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                }),
+            ]);
+            if (qualityRes.ok) {
+                setAiQuality(await qualityRes.json());
+            }
+            if (tagRes.ok) {
+                const data = await tagRes.json();
+                const newTags = data.tags.filter((t: string) => !selectedTags.includes(t));
+                setSelectedTags(prev => [...prev, ...newTags]);
             }
         } catch (err) {
             console.error('Quality check failed:', err);
@@ -148,6 +208,39 @@ export default function CreatePostForm() {
         }
     };
 
+    // AI: Apply Suggestions — improves title, content, and tags based on quality feedback
+    const handleApplySuggestions = async () => {
+        if (!aiQuality?.suggestions?.length) return;
+        setAiLoading('apply');
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/apply-suggestions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    post_type: postType,
+                    title,
+                    content_text: content || null,
+                    code_content: codeContent || null,
+                    tags: selectedTags,
+                    suggestions: aiQuality.suggestions,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                // Apply the improved fields
+                if (data.title) setTitle(data.title);
+                if (data.content) setContent(data.content);
+                if (data.tags && data.tags.length > 0) setSelectedTags(data.tags);
+                // Clear quality result so user re-checks with improved content
+                setAiQuality(null);
+            }
+        } catch (err) {
+            console.error('Apply suggestions failed:', err);
+        } finally {
+            setAiLoading(null);
+        }
+    };
+
     const handleSubmit = async () => {
         if (!title.trim() || !user?.id || !orgId) return;
 
@@ -190,6 +283,11 @@ export default function CreatePostForm() {
             };
 
             body.content_text = content || null;
+
+            // Image (not for threads)
+            if (imageUrl && postType !== 'thread') {
+                body.image_url = imageUrl;
+            }
 
             // All post types can have code snippets
             if (codeContent.trim()) {
@@ -237,7 +335,7 @@ export default function CreatePostForm() {
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-black dark:hover:text-white mb-6 cursor-pointer"
             >
                 <ArrowLeft className="w-4 h-4" />
-                Back to Network
+                Back to SenseNet
             </button>
 
             <h1 className="text-2xl font-semibold text-black dark:text-white mb-6">Create Post</h1>
@@ -324,6 +422,57 @@ export default function CreatePostForm() {
                     rows={postType === 'code_snippet' ? 10 : 4}
                 />
             </div>
+
+            {/* Image upload — not for threads */}
+            {postType !== 'thread' && (
+                <div className="mb-4">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        Image <span className="text-xs text-gray-400 font-normal">(optional — educational images only)</span>
+                    </label>
+
+                    {imageUrl ? (
+                        <div className="relative mt-2 inline-block">
+                            <img
+                                src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${imageUrl}`}
+                                alt="Uploaded"
+                                className="max-h-48 rounded-lg border border-gray-200 dark:border-[#35363a]"
+                            />
+                            <button
+                                onClick={() => setImageUrl(null)}
+                                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80 cursor-pointer"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    ) : (
+                        <label className="mt-1 flex items-center justify-center gap-2 px-4 py-6 rounded-lg border-2 border-dashed border-gray-300 dark:border-[#35363a] hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer transition-colors">
+                            {imageUploading ? (
+                                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                            ) : (
+                                <ImagePlus className="w-5 h-5 text-gray-400" />
+                            )}
+                            <span className="text-sm text-gray-500">
+                                {imageUploading ? "Validating & uploading..." : "Click to upload an educational image"}
+                            </span>
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/gif,image/webp"
+                                onChange={handleImageUpload}
+                                disabled={imageUploading}
+                                className="hidden"
+                            />
+                        </label>
+                    )}
+
+                    {imageError && (
+                        <div className="mt-2 flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                            {imageError}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Poll options */}
             {postType === 'poll' && (
@@ -420,6 +569,16 @@ export default function CreatePostForm() {
                                         </li>
                                     ))}
                                 </ul>
+                                {aiQuality.quality_tier !== 'high' && (
+                                    <button
+                                        onClick={handleApplySuggestions}
+                                        disabled={aiLoading === 'apply'}
+                                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 disabled:opacity-50 cursor-pointer transition-colors"
+                                    >
+                                        {aiLoading === 'apply' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                                        {aiLoading === 'apply' ? 'Applying...' : 'Apply Suggestions'}
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>

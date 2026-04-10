@@ -32,6 +32,7 @@ export interface NetworkPost {
     content_text?: string;
     code_content?: string;
     coding_language?: string;
+    image_url?: string;
     status: string;
     is_pinned: boolean;
     view_count: number;
@@ -43,6 +44,7 @@ export interface NetworkPost {
     user_vote?: 'upvote' | 'downvote' | null;
     poll_options?: PollOption[];
     created_at: string;
+    is_edited?: boolean;
 }
 
 export interface NetworkComment {
@@ -53,6 +55,7 @@ export interface NetworkComment {
     content: string;
     code_content?: string;
     coding_language?: string;
+    image_url?: string;
     upvote_count: number;
     user_vote?: 'upvote' | null;
     replies?: NetworkComment[];

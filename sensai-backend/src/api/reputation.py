@@ -1,6 +1,7 @@
 from api.config import (
     user_network_profiles_table_name,
     task_completions_table_name,
+    network_posts_table_name,
 )
 from api.utils.db import execute_db_operation, get_new_db_connection
 
@@ -95,4 +96,29 @@ async def recompute_user_badge(user_id: int, org_id: int):
                 endorsement_score = ?, downvote_penalty = ?, network_role = ?
             WHERE user_id = ? AND org_id = ?""",
         (total, badge_tier, learning_score, contribution_score, endorsement_score, downvote_penalty, network_role, user_id, org_id),
+    )
+
+
+async def recompute_post_quality_score(post_id: int):
+    """Recompute quality_score for a post based on engagement signals."""
+    row = await execute_db_operation(
+        f"SELECT upvote_count, downvote_count, reply_count, view_count FROM {network_posts_table_name} WHERE id = ? AND deleted_at IS NULL",
+        (post_id,),
+        fetch_one=True,
+    )
+    if not row:
+        return
+
+    upvotes = row[0] or 0
+    downvotes = row[1] or 0
+    replies = row[2] or 0
+    views = row[3] or 0
+
+    # Weighted score: upvotes and replies are strong signals, views are weak, downvotes penalize
+    score = (upvotes * 3.0) + (replies * 2.0) + (views * 0.1) - (downvotes * 2.0)
+    score = max(0.0, score)
+
+    await execute_db_operation(
+        f"UPDATE {network_posts_table_name} SET quality_score = ? WHERE id = ?",
+        (score, post_id),
     )

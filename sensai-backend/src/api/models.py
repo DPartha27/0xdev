@@ -841,6 +841,7 @@ class CreateNetworkPostRequest(BaseModel):
     content_text: str | None = None
     code_content: str | None = None
     coding_language: str | None = None
+    image_url: str | None = None
     tags: list[str] = []
     poll_options: list[str] | None = None
     quality_tier: str | None = None  # high, medium, low, spam — set by frontend after AI check
@@ -855,6 +856,7 @@ class CreateCommentRequest(BaseModel):
     content: str
     code_content: str | None = None
     coding_language: str | None = None
+    image_url: str | None = None
     parent_comment_id: int | None = None
 
 
@@ -876,6 +878,21 @@ class UpdateNetworkPostRequest(BaseModel):
     tags: list[str] | None = None
 
 
+class UpdateCommentRequest(BaseModel):
+    content: str
+    code_content: str | None = None
+    coding_language: str | None = None
+
+
+class ApplySuggestionsRequest(BaseModel):
+    post_type: str
+    title: str
+    content_text: str | None = None
+    code_content: str | None = None
+    tags: list[str] | None = None
+    suggestions: list[str] = []
+
+
 class AICheckRequest(BaseModel):
     post_type: str
     title: str
@@ -883,3 +900,4 @@ class AICheckRequest(BaseModel):
     code_content: str | None = None
     coding_language: str | None = None
     org_id: int | None = None
+    tags: list[str] | None = None

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { NetworkComment } from "@/types/network";
 import CommentCard from "./CommentCard";
-import { Code } from "lucide-react";
+import { Code, ImagePlus, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 interface CommentSectionProps {
@@ -18,10 +18,51 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
     const [isCodeMode, setIsCodeMode] = useState(false);
     const [codeLanguage, setCodeLanguage] = useState("javascript");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [commentImageUrl, setCommentImageUrl] = useState<string | null>(null);
+    const [imageUploading, setImageUploading] = useState(false);
+    const [imageError, setImageError] = useState<string | null>(null);
+    const [relevanceError, setRelevanceError] = useState<string | null>(null);
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setImageError(null);
+        setImageUploading(true);
+        try {
+            const validateForm = new FormData();
+            validateForm.append("file", file);
+            const validateRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/file/validate-image`, {
+                method: "POST",
+                body: validateForm,
+            });
+            if (!validateRes.ok) {
+                const err = await validateRes.json();
+                setImageError(err.detail || "Only educational images are allowed.");
+                return;
+            }
+            const uploadForm = new FormData();
+            uploadForm.append("file", file);
+            uploadForm.append("content_type", file.type);
+            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/file/upload-local`, {
+                method: "POST",
+                body: uploadForm,
+            });
+            if (uploadRes.ok) {
+                const data = await uploadRes.json();
+                setCommentImageUrl(data.static_url);
+            }
+        } catch {
+            setImageError("Failed to upload image.");
+        } finally {
+            setImageUploading(false);
+            e.target.value = "";
+        }
+    };
 
     const handleSubmit = async () => {
-        if (!newComment.trim() || !user?.id) return;
+        if ((!newComment.trim() && !commentImageUrl) || !user?.id) return;
         setIsSubmitting(true);
+        setRelevanceError(null);
 
         try {
             const body: any = { author_id: user.id };
@@ -30,7 +71,10 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
                 body.code_content = newComment;
                 body.coding_language = codeLanguage;
             } else {
-                body.content = newComment;
+                body.content = newComment || "Image";
+            }
+            if (commentImageUrl) {
+                body.image_url = commentImageUrl;
             }
 
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts/${postId}/comments`, {
@@ -42,7 +86,13 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
             if (res.ok) {
                 setNewComment("");
                 setIsCodeMode(false);
+                setCommentImageUrl(null);
+                setImageError(null);
+                setRelevanceError(null);
                 onCommentAdded();
+            } else if (res.status === 422) {
+                const err = await res.json();
+                setRelevanceError(err.detail || "Your comment doesn't seem relevant to this post.");
             }
         } catch (err) {
             console.error('Error posting comment:', err);
@@ -61,20 +111,42 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
         onCommentAdded();
     };
 
-    const handleReply = async (parentCommentId: number, content: string, codeContent?: string, codingLanguage?: string) => {
-        if (!user?.id) return;
+    const handleReply = async (parentCommentId: number, content: string, codeContent?: string, codingLanguage?: string): Promise<boolean> => {
+        if (!user?.id) return false;
         const body: any = { author_id: user.id, content, parent_comment_id: parentCommentId };
         if (codeContent) {
             body.code_content = codeContent;
             body.coding_language = codingLanguage;
         }
 
-        await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts/${postId}/comments`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/posts/${postId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        onCommentAdded();
+
+        if (res.ok) {
+            onCommentAdded();
+            return true;
+        } else if (res.status === 422) {
+            const err = await res.json();
+            throw new Error(err.detail || "Your reply doesn't seem relevant to this post.");
+        }
+        return false;
+    };
+
+    const handleDelete = async (commentId: number) => {
+        if (!user?.id) return;
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/comments/${commentId}`, {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                onCommentAdded();
+            }
+        } catch (err) {
+            console.error('Error deleting comment:', err);
+        }
     };
 
     return (
@@ -89,8 +161,10 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
                     <CommentCard
                         key={comment.id}
                         comment={comment}
+                        currentUserId={user?.id}
                         onVote={handleVote}
                         onReply={handleReply}
+                        onDelete={handleDelete}
                     />
                 ))}
                 {comments.length === 0 && (
@@ -116,6 +190,11 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
                         <Code className="w-3 h-3" />
                         Code
                     </button>
+                    <label className="flex items-center gap-1 text-xs px-2 py-0.5 rounded cursor-pointer text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                        {imageUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+                        Image
+                        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleImageUpload} disabled={imageUploading} className="hidden" />
+                    </label>
                     {isCodeMode && (
                         <select
                             value={codeLanguage}
@@ -132,6 +211,26 @@ export default function CommentSection({ postId, comments, onCommentAdded }: Com
                         </select>
                     )}
                 </div>
+                {relevanceError && (
+                    <div className="flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 mb-2 p-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        {relevanceError}
+                    </div>
+                )}
+                {imageError && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-500 mb-2">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        {imageError}
+                    </div>
+                )}
+                {commentImageUrl && (
+                    <div className="relative inline-block mb-2">
+                        <img src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${commentImageUrl}`} alt="Upload" className="max-h-24 rounded-md border border-gray-200 dark:border-[#35363a]" />
+                        <button onClick={() => setCommentImageUrl(null)} className="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80 cursor-pointer">
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
+                )}
                 <div className="flex gap-2">
                     {isCodeMode ? (
                         <textarea

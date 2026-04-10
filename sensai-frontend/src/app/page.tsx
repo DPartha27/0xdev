@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Header } from "@/components/layout/header";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -271,16 +271,126 @@ export default function Home() {
         schoolId={schoolId || undefined}
       />
 
-      {/* Floating Network Button */}
+      {/* Floating SenseNet Button with transition */}
       {session && (
-        <button
-          onClick={() => router.push('/network')}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3 rounded-full shadow-lg bg-black dark:bg-white text-white dark:text-black hover:scale-105 transition-transform cursor-pointer"
-          aria-label="Open Network Hub"
-        >
-          <Globe className="w-5 h-5" />
-          <span className="text-sm font-medium hidden sm:inline">Network</span>
-        </button>
+        <SenseNetButton onClick={() => router.push('/network')} />
+      )}
+    </>
+  );
+}
+
+
+function SenseNetButton({ onClick }: { onClick: () => void }) {
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const playWhooshSound = () => {
+    try {
+      const ctx = new AudioContext();
+      const now = ctx.currentTime;
+
+      // Whoosh — filtered noise sweep
+      const bufferSize = ctx.sampleRate * 0.5;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(200, now);
+      filter.frequency.exponentialRampToValueAtTime(4000, now + 0.15);
+      filter.frequency.exponentialRampToValueAtTime(600, now + 0.4);
+      filter.Q.value = 1.5;
+
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0, now);
+      noiseGain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+      noiseGain.gain.linearRampToValueAtTime(0, now + 0.4);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.5);
+
+      // Chime — two quick tones
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, now + 0.05);
+      osc.frequency.setValueAtTime(1320, now + 0.12);
+      const oscGain = ctx.createGain();
+      oscGain.gain.setValueAtTime(0, now);
+      oscGain.gain.linearRampToValueAtTime(0.2, now + 0.06);
+      oscGain.gain.linearRampToValueAtTime(0.15, now + 0.13);
+      oscGain.gain.linearRampToValueAtTime(0, now + 0.3);
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+      osc.start(now + 0.05);
+      osc.stop(now + 0.35);
+    } catch {}
+  };
+
+  const handleClick = () => {
+    if (isTransitioning) return;
+    playWhooshSound();
+    setIsTransitioning(true);
+    setTimeout(() => onClick(), 600);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleClick}
+        disabled={isTransitioning}
+        aria-label="Open SenseNet"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3 rounded-full shadow-lg bg-black dark:bg-white text-white dark:text-black cursor-pointer transition-all duration-300 hover:scale-110 hover:shadow-2xl active:scale-95 group"
+      >
+        {/* Pulse ring */}
+        <span className="absolute inset-0 rounded-full animate-ping bg-black/20 dark:bg-white/20 opacity-75 group-hover:opacity-0" style={{ animationDuration: "2.5s" }} />
+
+        <Globe className={`w-5 h-5 transition-transform duration-300 ${isTransitioning ? "rotate-180 scale-0" : "group-hover:rotate-12"}`} />
+        <span className={`text-sm font-medium hidden sm:inline transition-all duration-300 ${isTransitioning ? "opacity-0 translate-x-2" : ""}`}>
+          SenseNet
+        </span>
+      </button>
+
+      {/* Full-screen transition overlay */}
+      {isTransitioning && (
+        <div className="fixed inset-0 z-[100] pointer-events-none">
+          {/* Expanding circle from bottom-right */}
+          <div
+            className="absolute rounded-full bg-black dark:bg-white"
+            style={{
+              bottom: "24px",
+              right: "24px",
+              width: "60px",
+              height: "60px",
+              animation: "sensenet-expand 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+            }}
+          />
+          <style>{`
+            @keyframes sensenet-expand {
+              0% {
+                transform: scale(1);
+                opacity: 1;
+                border-radius: 50%;
+              }
+              70% {
+                transform: scale(50);
+                opacity: 1;
+                border-radius: 50%;
+              }
+              100% {
+                transform: scale(60);
+                opacity: 1;
+                border-radius: 0%;
+              }
+            }
+          `}</style>
+        </div>
       )}
     </>
   );
