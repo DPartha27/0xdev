@@ -117,6 +117,7 @@ async def create_post(
     coding_language: str | None = None,
     tag_names: list[str] | None = None,
     poll_options: list[str] | None = None,
+    status: str = "published",
 ) -> Dict:
     blocks_json = json.dumps(blocks) if blocks else None
 
@@ -125,9 +126,9 @@ async def create_post(
 
         await cursor.execute(
             f"""INSERT INTO {network_posts_table_name}
-                (org_id, author_id, post_type, title, blocks, content_text, code_content, coding_language)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (org_id, author_id, post_type, title, blocks_json, content_text, code_content, coding_language),
+                (org_id, author_id, post_type, title, blocks, content_text, code_content, coding_language, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (org_id, author_id, post_type, title, blocks_json, content_text, code_content, coding_language, status),
         )
         post_id = cursor.lastrowid
 
@@ -300,7 +301,7 @@ async def get_network_feed(
         LEFT JOIN {user_network_profiles_table_name} np ON p.author_id = np.user_id AND p.org_id = np.org_id
     """
 
-    conditions = [f"p.org_id = ?", "p.deleted_at IS NULL"]
+    conditions = [f"p.org_id = ?", "p.deleted_at IS NULL", "p.status = 'published'"]
     params: list = [org_id]
 
     if tag_slug:
@@ -447,6 +448,50 @@ async def update_post(
 
         await conn.commit()
 
+    return await get_post_by_id(post_id)
+
+
+async def get_pending_posts(org_id: int) -> List[Dict]:
+    """Get all posts with pending_approval status for mentor review."""
+    rows = await execute_db_operation(
+        f"""SELECT DISTINCT p.id, p.org_id, p.author_id, p.post_type, p.title, p.blocks, p.content_text,
+            p.code_content, p.coding_language, p.status, p.is_pinned, p.view_count,
+            p.reply_count, p.upvote_count, p.downvote_count, p.quality_score, p.created_at,
+            u.first_name, u.last_name, u.email,
+            COALESCE(np.badge_tier, 'Bronze 1') as badge_tier,
+            COALESCE(np.network_role, 'newbie') as network_role
+        FROM {network_posts_table_name} p
+        JOIN {users_table_name} u ON p.author_id = u.id
+        LEFT JOIN {user_network_profiles_table_name} np ON p.author_id = np.user_id AND p.org_id = np.org_id
+        WHERE p.org_id = ? AND p.status = 'pending_approval' AND p.deleted_at IS NULL
+        ORDER BY p.created_at DESC""",
+        (org_id,),
+        fetch_all=True,
+    )
+
+    posts = []
+    for row in (rows or []):
+        post = _row_to_post_dict(row)
+        tags = await execute_db_operation(
+            f"""SELECT t.id, t.name, t.slug, t.usage_count
+                FROM {network_tags_table_name} t
+                JOIN {network_post_tags_table_name} pt ON t.id = pt.tag_id
+                WHERE pt.post_id = ? AND t.deleted_at IS NULL""",
+            (post["id"],),
+            fetch_all=True,
+        )
+        post["tags"] = [{"id": t[0], "name": t[1], "slug": t[2], "usage_count": t[3]} for t in (tags or [])]
+        posts.append(post)
+
+    return posts
+
+
+async def update_post_status(post_id: int, status: str) -> Dict | None:
+    """Update post status (e.g. pending_approval -> published or rejected)."""
+    await execute_db_operation(
+        f"UPDATE {network_posts_table_name} SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+        (status, post_id),
+    )
     return await get_post_by_id(post_id)
 
 

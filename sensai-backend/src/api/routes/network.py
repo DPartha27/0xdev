@@ -16,6 +16,8 @@ from api.db.network import (
     vote_on_target as vote_on_target_in_db,
     vote_on_poll as vote_on_poll_in_db,
     get_user_network_profile as get_user_network_profile_from_db,
+    get_pending_posts as get_pending_posts_from_db,
+    update_post_status as update_post_status_in_db,
 )
 from api.reputation import recompute_user_badge
 from api.network_ai import ai_quality_check, ai_auto_tag, ai_summarize, ai_suggest_answer
@@ -26,6 +28,7 @@ from api.models import (
     VoteRequest,
     PollVoteRequest,
     AICheckRequest,
+    ApproveRejectRequest,
 )
 
 router = APIRouter()
@@ -61,6 +64,13 @@ async def get_all_tags(org_id: int) -> List[Dict]:
 
 @router.post("/posts")
 async def create_post(request: CreateNetworkPostRequest) -> Dict:
+    # Determine status based on quality tier
+    status = "published"
+    if request.quality_tier == "medium":
+        status = "pending_approval"
+    elif request.quality_tier in ("low", "spam"):
+        raise HTTPException(status_code=400, detail="Post quality is too low to publish. Please improve your content.")
+
     post = await create_post_in_db(
         org_id=request.org_id,
         author_id=request.author_id,
@@ -72,6 +82,7 @@ async def create_post(request: CreateNetworkPostRequest) -> Dict:
         coding_language=request.coding_language,
         tag_names=request.tags,
         poll_options=request.poll_options,
+        status=status,
     )
     # Recompute badge after creating post
     await recompute_user_badge(request.author_id, request.org_id)
@@ -97,6 +108,15 @@ async def get_feed(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/posts/pending")
+async def get_pending_posts(org_id: int, mentor_id: int) -> List[Dict]:
+    """Get posts awaiting mentor approval. Only mentors can access."""
+    profile = await get_user_network_profile_from_db(mentor_id, org_id)
+    if profile.get("network_role") not in ("mentor", "master"):
+        raise HTTPException(status_code=403, detail="Only mentors can view pending posts")
+    return await get_pending_posts_from_db(org_id)
 
 
 @router.get("/posts/{post_id}")
@@ -184,6 +204,43 @@ async def vote_poll(post_id: int, request: PollVoteRequest) -> Dict:
 @router.get("/profile/{user_id}")
 async def get_profile(user_id: int, org_id: int) -> Dict:
     return await get_user_network_profile_from_db(user_id, org_id)
+
+
+# ─── Mentor Moderation ───
+
+
+@router.post("/posts/{post_id}/approve")
+async def approve_post(post_id: int, request: ApproveRejectRequest) -> Dict:
+    """Mentor approves a pending post — sets status to published."""
+    post = await get_post_by_id_from_db(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    profile = await get_user_network_profile_from_db(request.mentor_id, post["org_id"])
+    if profile.get("network_role") not in ("mentor", "master"):
+        raise HTTPException(status_code=403, detail="Only mentors can approve posts")
+
+    updated = await update_post_status_in_db(post_id, "published")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return updated
+
+
+@router.post("/posts/{post_id}/reject")
+async def reject_post(post_id: int, request: ApproveRejectRequest) -> Dict:
+    """Mentor rejects a pending post."""
+    post = await get_post_by_id_from_db(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    profile = await get_user_network_profile_from_db(request.mentor_id, post["org_id"])
+    if profile.get("network_role") not in ("mentor", "master"):
+        raise HTTPException(status_code=403, detail="Only mentors can reject posts")
+
+    updated = await update_post_status_in_db(post_id, "rejected")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return updated
 
 
 # ─── AI Features ───

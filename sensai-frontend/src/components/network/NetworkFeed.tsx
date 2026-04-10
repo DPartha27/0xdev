@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, ShieldCheck } from "lucide-react";
 import { useNetworkFeed } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import PostCard from "./PostCard";
@@ -10,11 +10,12 @@ import PostCard from "./PostCard";
 interface NetworkFeedProps {
     orgId: number | null;
     selectedTag: string | null;
+    userRole?: string;
 }
 
 type FilterType = 'for_you' | 'recent' | 'popular' | 'unanswered';
 
-export default function NetworkFeed({ orgId, selectedTag }: NetworkFeedProps) {
+export default function NetworkFeed({ orgId, selectedTag, userRole }: NetworkFeedProps) {
     const router = useRouter();
     const { user } = useAuth();
     const [activeFilter, setActiveFilter] = useState<FilterType>('for_you');
@@ -105,13 +106,24 @@ export default function NetworkFeed({ orgId, selectedTag }: NetworkFeedProps) {
                         </button>
                     ))}
                 </div>
-                <button
-                    onClick={() => router.push('/network/create')}
-                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 cursor-pointer"
-                >
-                    <Plus className="w-4 h-4" />
-                    <span className="hidden sm:inline">Create Post</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    {(userRole === 'mentor' || userRole === 'master') && (
+                        <button
+                            onClick={() => router.push('/network/mentor-dashboard')}
+                            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors"
+                        >
+                            <ShieldCheck className="w-4 h-4" />
+                            <span className="hidden sm:inline">Review</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => router.push('/network/create')}
+                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 cursor-pointer"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Create Post</span>
+                    </button>
+                </div>
             </div>
 
             {/* Posts list */}

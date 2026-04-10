@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useSchools, useAllTags } from "@/lib/api";
-import { MessageSquare, HelpCircle, BarChart3, Code, Lightbulb, BookOpen, X, Plus, ArrowLeft, Sparkles, Shield, Tag, FileText, Loader2 } from "lucide-react";
+import { MessageSquare, HelpCircle, BarChart3, Code, Lightbulb, BookOpen, X, Plus, ArrowLeft, Sparkles, Shield, Tag, FileText, Loader2, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 
 const postTypes = [
     { key: 'thread', label: 'Thread', icon: MessageSquare, desc: 'Start a discussion' },
@@ -51,6 +51,11 @@ export default function CreatePostForm() {
     const [aiQuality, setAiQuality] = useState<any>(null);
     const [aiLoading, setAiLoading] = useState<string | null>(null); // 'quality' | 'tags' | 'summarize' | null
     const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+    // Reset quality check when content changes so user can re-check
+    useEffect(() => {
+        setAiQuality(null);
+    }, [title, content, codeContent, postType]);
 
     const filteredSuggestions = existingTags
         .filter(t => t.name.toLowerCase().includes(tagInput.toLowerCase()) && !selectedTags.includes(t.name))
@@ -145,6 +150,33 @@ export default function CreatePostForm() {
 
     const handleSubmit = async () => {
         if (!title.trim() || !user?.id || !orgId) return;
+
+        // If quality hasn't been checked yet, run it first
+        if (!aiQuality) {
+            setAiLoading('quality');
+            try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/ai/quality-check`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getAiRequestBody()),
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    setAiQuality(result);
+                    // Don't proceed — let user see the result and click again
+                    return;
+                }
+            } catch (err) {
+                console.error('Quality check failed:', err);
+            } finally {
+                setAiLoading(null);
+            }
+            return;
+        }
+
+        // Block low/spam quality
+        if (aiQuality.quality_tier === 'low' || aiQuality.quality_tier === 'spam') return;
+
         setIsSubmitting(true);
 
         try {
@@ -154,6 +186,7 @@ export default function CreatePostForm() {
                 post_type: postType,
                 title: title.trim(),
                 tags: selectedTags,
+                quality_tier: aiQuality.quality_tier,
             };
 
             body.content_text = content || null;
@@ -176,7 +209,11 @@ export default function CreatePostForm() {
 
             if (res.ok) {
                 const post = await res.json();
-                router.push(`/network/post/${post.id}`);
+                if (aiQuality.quality_tier === 'medium') {
+                    router.push(`/network?submitted=pending`);
+                } else {
+                    router.push(`/network/post/${post.id}`);
+                }
             }
         } catch (err) {
             console.error('Error creating post:', err);
@@ -444,14 +481,58 @@ export default function CreatePostForm() {
                 )}
             </div>
 
+            {/* Quality gate status message */}
+            {aiQuality && (aiQuality.quality_tier === 'low' || aiQuality.quality_tier === 'spam') && (
+                <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm">Your post quality is too low to publish. Please improve your content based on the suggestions above.</span>
+                </div>
+            )}
+
+            {aiQuality && aiQuality.quality_tier === 'medium' && (
+                <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400">
+                    <Clock className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm">Your post will be submitted for mentor review before publishing.</span>
+                </div>
+            )}
+
+            {aiQuality && aiQuality.quality_tier === 'high' && (
+                <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400">
+                    <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm">Great quality! Your post will be published directly.</span>
+                </div>
+            )}
+
             {/* Submit */}
             <div className="flex gap-3">
                 <button
                     onClick={handleSubmit}
-                    disabled={isSubmitting || !title.trim() || title.trim().length < 5}
-                    className="px-6 py-3 text-sm font-medium rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                    disabled={
+                        isSubmitting ||
+                        !title.trim() ||
+                        title.trim().length < 5 ||
+                        aiLoading === 'quality' ||
+                        (aiQuality && (aiQuality.quality_tier === 'low' || aiQuality.quality_tier === 'spam'))
+                    }
+                    className={`px-6 py-3 text-sm font-medium rounded-lg disabled:opacity-50 cursor-pointer transition-colors ${
+                        aiQuality?.quality_tier === 'medium'
+                            ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                            : 'bg-black dark:bg-white text-white dark:text-black hover:opacity-90'
+                    }`}
                 >
-                    {isSubmitting ? 'Publishing...' : 'Publish Post'}
+                    {aiLoading === 'quality' ? (
+                        <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Checking Quality...</span>
+                    ) : isSubmitting ? (
+                        'Publishing...'
+                    ) : !aiQuality ? (
+                        'Publish Post'
+                    ) : aiQuality.quality_tier === 'high' ? (
+                        'Publish Post'
+                    ) : aiQuality.quality_tier === 'medium' ? (
+                        <span className="flex items-center gap-2"><Clock className="w-4 h-4" /> Submit for Mentor Review</span>
+                    ) : (
+                        'Cannot Publish'
+                    )}
                 </button>
                 <button
                     onClick={() => router.push('/network')}

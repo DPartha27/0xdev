@@ -11,6 +11,7 @@ export default function NetworkDashboard() {
     const { user } = useAuth();
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [orgId, setOrgId] = useState<number | null>(null);
+    const [userRole, setUserRole] = useState<string>('newbie');
 
     useEffect(() => {
         // Try from schools first
@@ -42,6 +43,15 @@ export default function NetworkDashboard() {
         }
     }, [schools, user?.id]);
 
+    // Fetch user's network role
+    useEffect(() => {
+        if (!orgId || !user?.id) return;
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/network/profile/${user.id}?org_id=${orgId}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data?.network_role) setUserRole(data.network_role); })
+            .catch(() => {});
+    }, [orgId, user?.id]);
+
     return (
         <div className="flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto px-4 sm:px-8 pt-6 pb-12">
             {/* Tags sidebar - shows on top for mobile, right side for desktop */}
@@ -51,7 +61,7 @@ export default function NetworkDashboard() {
 
             {/* Main feed */}
             <div className="flex-1 min-w-0">
-                <NetworkFeed orgId={orgId} selectedTag={selectedTag} />
+                <NetworkFeed orgId={orgId} selectedTag={selectedTag} userRole={userRole} />
             </div>
 
             {/* Desktop sidebar */}

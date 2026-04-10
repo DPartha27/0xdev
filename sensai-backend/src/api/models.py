@@ -843,6 +843,11 @@ class CreateNetworkPostRequest(BaseModel):
     coding_language: str | None = None
     tags: list[str] = []
     poll_options: list[str] | None = None
+    quality_tier: str | None = None  # high, medium, low, spam — set by frontend after AI check
+
+
+class ApproveRejectRequest(BaseModel):
+    mentor_id: int
 
 
 class CreateCommentRequest(BaseModel):
